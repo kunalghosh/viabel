@@ -9,10 +9,16 @@ import autograd.scipy.stats.multivariate_normal as mvn
 import autograd.scipy.stats.t as t_dist
 from autograd.scipy.linalg import sqrtm
 
+from .functions import compute_R_hat, compute_R_hat_adaptive_numpy, compute_R_hat_halfway, stochastic_weight_averaging
+
+import scipy.stats as stats
+
 from paragami import (PatternDict,
                       NumericVectorPattern,
                       PSDSymmetricMatrixPattern,
                       FlattenFunctionInput)
+
+from functools import partial
 
 import tqdm
 
@@ -23,9 +29,14 @@ __all__ = [
     'mean_field_t_variational_family',
     't_variational_family',
     'black_box_klvi',
+    'black_box_klvi_pd',
+    'black_box_klvi_pd2',
     'black_box_chivi',
     'make_stan_log_density',
     'adagrad_optimize',
+    'rmsprop_IA_optimize',
+    'adam_IA_optimize',
+    'rmsprop_IA_optimize_with_rhat'
 ]
 
 VariationalFamily = namedtuple('VariationalFamily',
@@ -141,6 +152,38 @@ def black_box_klvi(var_family, logdensity, n_samples):
     return objective_and_grad
 
 
+
+def black_box_klvi_pd(var_family, logdensity, n_samples):
+    def variational_objective(var_param):
+        """Provides a stochastic estimate of the variational lower bound."""
+        samples = var_family.sample(var_param, n_samples)
+        lower_bound = np.mean(logdensity(samples)) - np.mean(var_family.logdensity(samples, var_param))
+        return -lower_bound
+
+    objective_and_grad = value_and_grad(variational_objective)
+    #objective_path_val = np.mean(logdensity(Samples))
+
+    return objective_and_grad
+
+
+def black_box_klvi_pd2(var_family, logdensity, n_samples):
+    #a formulation which avoids path derivatives ...
+    def variational_objective(var_param):
+        """Provides a stochastic estimate of the variational lower bound."""
+        samples = var_family.sample(var_param, n_samples)
+        a = partial(var_family.logdensity,var_param=var_param)
+        def nested_fn(samples):
+            lower_bound = np.mean(logdensity(samples)) - np.mean(a(samples))
+            return -lower_bound
+        b= nested_fn(samples)
+        return b
+
+    objective_and_grad = value_and_grad(variational_objective)
+    #objective_path_val = np.mean(logdensity(Samples))
+
+    return objective_and_grad
+
+
 def black_box_chivi(alpha, var_family, logdensity, n_samples):
     def compute_log_weights(var_param, seed):
         """Provides a stochastic estimate of the variational lower bound."""
@@ -246,3 +289,251 @@ def adagrad_optimize(n_iters, objective_and_grad, init_param,
             progress.close()
     return (variational_param, np.array(variational_param_history),
             np.array(value_history), np.array(log_norm_history))
+
+
+
+def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
+                        has_log_norm=False, window=500, learning_rate=.01,
+                        epsilon=.000001, averaging=True, n_optimisers=1, r_mean_threshold=1.15, learning_rate_end=None):
+    local_grad_history = []
+    local_log_norm_history = []
+    value_history = []
+    log_norm_history = []
+    variational_param = init_param.copy()
+    variational_param_history = []
+    averaged_variational_param_history = []
+    start_avg_iter = n_iters // 1.3
+    sum_grad_norm = 0.
+    alpha = 0.9
+    scaled_sum_grad_norm = 0.
+    variational_param_history_list = []
+    averaged_variational_param_history_list = []
+    variational_param_list = []
+    averaged_variational_param_list = []
+    window_size=500
+
+    for o in range(n_optimisers):
+        variational_param_history = []
+        np.random.seed(seed=o)
+        if o >= 1:
+            variational_param = init_param + stats.norm.rvs(size=len(init_param))*(o+1)*0.2
+        #variational_param = init_param
+        #print(variational_param)
+        with tqdm.trange(n_iters) as progress:
+            try:
+                schedule = learning_rate_schedule(n_iters, learning_rate, learning_rate_end)
+                for i, curr_learning_rate in zip(progress, schedule):
+                    prev_variational_param = variational_param
+                    if has_log_norm:
+                        obj_val, obj_grad, log_norm = objective_and_grad(variational_param)
+                    else:
+                        obj_val, obj_grad = objective_and_grad(variational_param)
+                        log_norm = 0
+                    value_history.append(obj_val)
+                    local_grad_history.append(obj_grad)
+                    local_log_norm_history.append(log_norm)
+                    log_norm_history.append(log_norm)
+                    if len(local_grad_history) > window:
+                        local_grad_history.pop(0)
+                        local_log_norm_history.pop(0)
+
+                    if has_log_norm:
+                        grad_norm = np.exp(log_norm)
+                    else:
+                        grad_norm = np.sum(obj_grad ** 2, axis=0)
+                    if i == 0:
+                        # sum_grad_squared=obj_grad**2
+                        sum_grad_squared = grad_norm
+                    else:
+                        # sum_grad_squared = sum_grad_squared*alpha + (1.-alpha)*obj_grad**2
+                        sum_grad_squared = grad_norm * alpha + (1. - alpha) * grad_norm
+                    grad_scale = np.exp(np.min(local_log_norm_history) - np.array(local_log_norm_history))
+                    scaled_grads = grad_scale[:, np.newaxis] * np.array(local_grad_history)
+                    accum_sum = np.sum(scaled_grads ** 2, axis=0)
+                    scaled_sum_grad_norm = scaled_sum_grad_norm * alpha + (1 - alpha) * accum_sum
+                    old_variational_param = variational_param.copy()
+                    variational_param = variational_param - curr_learning_rate * obj_grad / np.sqrt(
+                        epsilon + sum_grad_squared)
+                    # variational_param = variational_param - curr_learning_rate * obj_grad / np.sqrt(epsilon + scaled_sum_grad_norm)
+                    variational_param_history.append(old_variational_param)
+                    if len(variational_param_history) > 100 * window:
+                        variational_param_history.pop(0)
+                    if i % 100 == 0:
+                        avg_loss = np.mean(value_history[max(0, i - 1000):i + 1])
+                        #print(avg_loss)
+                        #progress.set_description(
+                        #    'Average Loss = {:,.5g}'.format(avg_loss))
+
+
+            except (KeyboardInterrupt, StopIteration) as e:  # pragma: no cover
+                # do not print log on the same line
+                progress.close()
+            finally:
+                #pass
+                progress.close()
+
+        variational_param_history_array = np.array(variational_param_history)
+        variational_param_history_list.append(variational_param_history_array)
+        variational_param_list.append(variational_param)
+
+    variational_param_history_chains = np.stack(variational_param_history_list, axis=0)
+    rhats = compute_R_hat_adaptive_numpy(variational_param_history_chains, window_size=window_size)
+    rhat_mean_windows, rhat_sigma_windows = rhats[:,:K], rhats[:,K:]
+
+    start_swa_m_iters = 2000
+    for ee, w in enumerate(rhat_mean_windows):
+        if ee == (rhat_mean_windows.shape[0] - 1):
+            continue
+    # print(R_hat_window_np[ee])
+        if (rhat_mean_windows[ee] < r_mean_threshold).all() and (rhat_mean_windows[ee + 1] < r_mean_threshold).all():
+            start_swa_m_iters = ee * window_size
+            break
+
+    optimisation_log = dict()
+
+    for o in range(n_optimisers):
+        q_locs_dim = variational_param_history_chains[o,:,:K]
+        q_log_sigmas_dim = variational_param_history_chains[o, :, K:]
+        q_swa_means_iters, q_swa_mean = stochastic_weight_averaging(q_locs_dim,
+                                                                    start_swa_m_iters)
+        q_swa_log_sigmas_iters, q_swa_log_sigma = stochastic_weight_averaging(q_log_sigmas_dim,
+                                                                              start_swa_m_iters)
+        averaged_variational_params = np.hstack((q_swa_means_iters, q_swa_log_sigmas_iters))
+        averaged_variational_param_list.append(averaged_variational_params)
+
+    optimisation_log['start_avg_mean_iters'] = start_swa_m_iters
+    optimisation_log['start_avg_sigma_iters'] = start_swa_m_iters
+    optimisation_log['r_hat_mean'] = rhat_mean_windows
+    optimisation_log['r_hat_sigma'] = rhat_sigma_windows
+
+    return (variational_param, averaged_variational_param_list,
+            np.array(averaged_variational_param_history),
+            np.array(value_history), np.array(log_norm_history), optimisation_log)
+
+
+
+def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
+                        has_log_norm=False, window=500, learning_rate=.01,
+                        epsilon=.000001, averaging=True, n_optimisers=1, learning_rate_end=None):
+    local_grad_history = []
+    local_log_norm_history = []
+    value_history = []
+    log_norm_history = []
+    variational_param = init_param.copy()
+    variational_param_history = []
+    averaged_variational_param_history = []
+    start_avg_iter = n_iters // 1.3
+    sum_grad_norm = 0.
+    alpha = 0.9
+    scaled_sum_grad_norm = 0.
+    variational_param_history_list = []
+    averaged_variational_param_history_list = []
+    variational_param_list = []
+    averaged_variational_param_list = []
+    window_size=500
+    grad_val= 0.
+    grad_squared=0
+    beta1=0.9
+    beta2=0.999
+    r_mean_threshold= 1.15
+
+
+    for o in range(n_optimisers):
+        variational_param_history = []
+        np.random.seed(seed=o)
+        if o >= 1:
+            variational_param = init_param + stats.norm.rvs(size=len(init_param))*(o+1)*0.2
+        #variational_param = init_param
+        #print(variational_param)
+        with tqdm.trange(n_iters) as progress:
+            try:
+                schedule = learning_rate_schedule(n_iters, learning_rate, learning_rate_end)
+                for i, curr_learning_rate in zip(progress, schedule):
+                    prev_variational_param = variational_param
+                    if has_log_norm:
+                        obj_val, obj_grad, log_norm = objective_and_grad(variational_param)
+                    else:
+                        obj_val, obj_grad = objective_and_grad(variational_param)
+                        log_norm = 0
+                    value_history.append(obj_val)
+                    local_grad_history.append(obj_grad)
+                    local_log_norm_history.append(log_norm)
+                    log_norm_history.append(log_norm)
+                    if len(local_grad_history) > window:
+                        local_grad_history.pop(0)
+                        local_log_norm_history.pop(0)
+
+                    if has_log_norm:
+                        grad_norm = np.exp(log_norm)
+                    else:
+                        grad_norm = np.sum(obj_grad ** 2, axis=0)
+                    if i == 0:
+                        grad_squared = 0.9 * obj_grad ** 2
+                        grad_val = 0.9 * obj_grad
+                    else:
+                        grad_squared = grad_squared * beta2 + (1. - beta2) * obj_grad ** 2
+                        grad_val = grad_val * beta1 + (1. - beta1) * obj_grad
+                    grad_scale = np.exp(np.min(local_log_norm_history) - np.array(local_log_norm_history))
+                    scaled_grads = grad_scale[:, np.newaxis] * np.array(local_grad_history)
+                    accum_sum = np.sum(scaled_grads ** 2, axis=0)
+                    old_variational_param = variational_param.copy()
+                    m_hat = grad_val / (1 - np.power(beta1, i + 2))
+                    v_hat = grad_squared / (1 - np.power(beta2, i + 2))
+                    variational_param = variational_param - curr_learning_rate * m_hat / np.sqrt(epsilon + v_hat)
+                    if averaging is True and i > start_avg_iter:
+                        averaged_variational_param = (variational_param + old_variational_param * (
+                                    i - start_avg_iter)) / (i - start_avg_iter + 1)
+                        averaged_variational_param_history.append(averaged_variational_param)
+                    variational_param_history.append(old_variational_param)
+                    if len(variational_param_history) > 100 * window:
+                        variational_param_history.pop(0)
+                    if i % 100 == 0:
+                        avg_loss = np.mean(value_history[max(0, i - 1000):i + 1])
+                        #print(avg_loss)
+                        #progress.set_description(
+                        #    'Average Loss = {:,.5g}'.format(avg_loss))
+
+
+            except (KeyboardInterrupt, StopIteration) as e:  # pragma: no cover
+                # do not print log on the same line
+                progress.close()
+            finally:
+                #pass
+                progress.close()
+
+        variational_param_history_array = np.array(variational_param_history)
+        variational_param_history_list.append(variational_param_history_array)
+        variational_param_list.append(variational_param)
+
+    variational_param_history_chains = np.stack(variational_param_history_list, axis=0)
+    rhats = compute_R_hat_adaptive_numpy(variational_param_history_chains, window_size=window_size)
+    rhat_mean_windows, rhat_sigma_windows = rhats[:,:K], rhats[:,K:]
+
+    start_swa_m_iters = 2000
+    for ee, w in enumerate(rhat_mean_windows):
+        if ee == (rhat_mean_windows.shape[0] - 1):
+            continue
+    # print(R_hat_window_np[ee])
+        if (rhat_mean_windows[ee] < r_mean_threshold).all() and (rhat_mean_windows[ee + 1] < r_mean_threshold).all():
+            start_swa_m_iters = ee * window_size
+            break
+
+    optimisation_log = dict()
+
+    for o in range(n_optimisers):
+        q_locs_dim = variational_param_history_chains[o,:,:K]
+        q_log_sigmas_dim = variational_param_history_chains[o, :, K:]
+        q_swa_means_iters, q_swa_mean = stochastic_weight_averaging(q_locs_dim,
+                                                                    start_swa_m_iters)
+        q_swa_log_sigmas_iters, q_swa_log_sigma = stochastic_weight_averaging(q_log_sigmas_dim,
+                                                                              start_swa_m_iters)
+        averaged_variational_params = np.hstack((q_swa_means_iters, q_swa_log_sigmas_iters))
+        averaged_variational_param_list.append(averaged_variational_params)
+
+    optimisation_log['start_avg_mean_iters'] = start_swa_m_iters
+    optimisation_log['r_hat_mean'] = rhat_mean_windows
+    optimisation_log['r_hat_sigma'] = rhat_sigma_windows
+
+    return (variational_param, averaged_variational_param_list,
+            np.array(averaged_variational_param_history),
+            np.array(value_history), np.array(log_norm_history), optimisation_log)
