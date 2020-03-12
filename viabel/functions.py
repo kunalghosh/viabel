@@ -1,18 +1,14 @@
 
-import numpy as np
+import autograd.numpy as np
 
 def compute_R_hat(chains, warmup=500):
     #first axis is relaisations, second is iters
     # N_realisations X N_iters X Ndims
     jitter = 1e-8
-    #print(chains.shape)
     chains = chains[:, warmup:, :]
     n_iters = chains.shape[1]
     n_chains = chains.shape[0]
     K = chains.shape[2]
-    #print(warmup)
-    print(chains.shape)
-
     if n_iters%2 == 1:
         n_iters = int(n_iters - 1)
         chains = chains[:,:n_iters-1,:]
@@ -30,7 +26,6 @@ def compute_R_hat(chains, warmup=500):
     R_hat = np.sqrt(var_hat)
     return var_hat, R_hat
 
-
 # def compute_R_hat_adaptive_numpy(chains, window_size=100):
 #     # numpy function for computing R-hat , maybe inefficient but does the job ...
 #     n_chains, n_iters, K = chains.shape
@@ -46,17 +41,10 @@ def compute_R_hat_adaptive_numpy(chains, window_size=100):
     # numpy function for computing R-hat , maybe inefficient but does the job ...
     n_chains, n_iters, K = chains.shape
     n_windows = n_iters//window_size
-    #rhats = np.zeros((n_windows,K))
-
     chains_reshaped = np.transpose(np.reshape(chains, [n_chains, n_windows,
                                                        window_size, -1]),
                                      [1, 0, 2, 3])
-    print(chains_reshaped.shape)
-    #r_hats = np.apply_over_axes(lambda chains: compute_R_hat(chains, warmup=0)[1],0,
-    #                   chains_reshaped)
-
     r_hats = np.array([compute_R_hat(chains_reshaped[i, :], warmup=0)[1] for i in range(chains_reshaped.shape[0])])
-
     return r_hats
 
 def compute_R_hat_halfway(chains, interval=100, start=1000):
@@ -73,7 +61,7 @@ def compute_R_hat_halfway(chains, interval=100, start=1000):
     return r_hats_halfway
 
 
-def stochastic_weight_averaging(estimate, start):
+def stochastic_iterate_averaging(estimate, start):
     N = estimate.shape[0]
     if N - start <= 0:
         raise "Start of stationary distribution must be lower than number of iterates"
@@ -83,3 +71,37 @@ def stochastic_weight_averaging(estimate, start):
     estimate_iters = np.cumsum(estimate[start:,:], axis=0) / window_lengths
     estimate_mean = estimate_iters[-1]
     return (estimate_iters, estimate_mean)
+
+
+def safe_root(N):
+    i = np.sqrt(N)
+    j = int(i)
+    if i != j:
+        raise ValueError("N is not square!")
+    return j
+
+
+
+def flat_to_triang(flat_mat):
+    N, D = flat_mat.shape
+    M = int(-1 + np.sqrt(8*N+1))//2
+    ret = np.zeros((D, M, M))
+    for d in range(D):
+        count = 0
+        for m in range(M):
+            for mm in range(m+1):
+                ret[d,m, mm] = flat_mat[count, d];
+                count = count+1
+    return ret
+
+def triang_to_flat(L):
+    D, _, M = L.shape
+    N = M*(M+1)//2
+    flat = np.empty((N, D))
+    for d in range(D):
+        count = 0;
+        for m in range(M):
+            for mm in range(m+1):
+                flat[count,d] = L[d, m, mm]
+                count = count +1
+    return flat
