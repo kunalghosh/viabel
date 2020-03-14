@@ -106,6 +106,7 @@ def plot_approx_and_exact_contours(logdensity, var_family, var_param,
     plt.contour(X, Y, Zapprox, cmap=cmap2, linestyles='solid')
     if savepath is not None:
         plt.savefig(savepath, bbox_inches='tight')
+
     plt.show()
 
 
