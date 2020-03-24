@@ -123,7 +123,19 @@ def full_rank_gaussian_variational_family(dim):
         Sigma = L@L.T
         return mean, np.diag(Sigma)
 
-    return VariationalFamily(sample, entropy, logdensity, mean_and_cov, dim*(dim+3)//2)
+    def pth_moment(p, var_param):
+        if p not in [2,4]:
+            raise ValueError('only p = 2 or 4 supported')
+        _, log_std = unpack_params(var_param)
+        vars = np.exp(2*log_std)
+        if p == 2:
+            return np.sum(vars)
+        else:  # p == 4
+            return 2*np.sum(vars**2) + np.sum(vars)**2
+
+
+    return VariationalFamily(sample, entropy, logdensity, mean_and_cov, pth_moment, dim*(dim+3)//2)
+
 
 def mean_field_t_variational_family(dim, df):
     if df <= 2:
@@ -380,7 +392,8 @@ def adagrad_optimize(n_iters, objective_and_grad, init_param,
 def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
                         has_log_norm=False, window=500, learning_rate=.01,
                         epsilon=.000001, rhat_window=500, averaging=True, n_optimisers=1,
-                                  r_mean_threshold=1.15, r_sigma_threshold=1.20,learning_rate_end=None):
+                                  r_mean_threshold=1.15, r_sigma_threshold=1.20, tail_avg_iters=2000, avg_grad_norm=False,
+                                  learning_rate_end=None):
     local_grad_history = []
     local_log_norm_history = []
     value_history = []
@@ -396,13 +409,16 @@ def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
     averaged_variational_param_history_list = []
     variational_param_list = []
     averaged_variational_param_list = []
+    averaged_variational_mean_list = []
+    averaged_variational_sigmas_list = []
+
     #window_size=500
 
     for o in range(n_optimisers):
         variational_param_history = []
         np.random.seed(seed=o)
         if o >= 1:
-            variational_param = init_param + stats.norm.rvs(size=len(init_param))*(o+1)*0.2
+            variational_param = init_param + stats.norm.rvs(size=len(init_param))*(o+1)*0.5
         #variational_param = init_param
         #print(variational_param)
         with tqdm.trange(n_iters) as progress:
@@ -428,11 +444,17 @@ def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
                     else:
                         grad_norm = np.sum(obj_grad ** 2, axis=0)
                     if i == 0:
-                        # sum_grad_squared=obj_grad**2
-                        sum_grad_squared = grad_norm
+                        if avg_grad_norm:
+                            sum_grad_squared = grad_norm
+                        else:
+                            sum_grad_squared=obj_grad**2
+                        #sum_grad_squared = grad_norm
                     else:
-                        # sum_grad_squared = sum_grad_squared*alpha + (1.-alpha)*obj_grad**2
-                        sum_grad_squared = grad_norm * alpha + (1. - alpha) * grad_norm
+                        if avg_grad_norm:
+                            sum_grad_squared = grad_norm * alpha + (1. - alpha) * grad_norm
+                        else:
+                            sum_grad_squared = sum_grad_squared*alpha + (1.-alpha)*obj_grad**2
+                        #sum_grad_squared = grad_norm * alpha + (1. - alpha) * grad_norm
                     grad_scale = np.exp(np.min(local_log_norm_history) - np.array(local_log_norm_history))
                     scaled_grads = grad_scale[:, np.newaxis] * np.array(local_grad_history)
                     accum_sum = np.sum(scaled_grads ** 2, axis=0)
@@ -465,8 +487,12 @@ def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
     variational_param_history_chains = np.stack(variational_param_history_list, axis=0)
     rhats = compute_R_hat_adaptive_numpy(variational_param_history_chains, window_size=rhat_window)
     rhat_mean_windows, rhat_sigma_windows = rhats[:,:K], rhats[:,K:]
+    rhats_halfway = compute_R_hat_halfway(variational_param_history_chains, interval=100, start=200)
 
-    start_swa_m_iters = n_iters - 2000
+    rhat_mean_windows, rhat_sigma_windows = rhats[:,:K], rhats[:,K:]
+    rhat_mean_halfway, rhat_sigma_halfway = rhats_halfway[:, :K], rhats_halfway[:, K:]
+
+    start_swa_m_iters = n_iters - tail_avg_iters
     start_swa_s_iters = start_swa_m_iters
     for ee, w in enumerate(rhat_mean_windows):
         if ee == (rhat_mean_windows.shape[0] - 1):
@@ -493,24 +519,43 @@ def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
         q_swa_means_iters, q_swa_mean = stochastic_iterate_averaging(q_locs_dim,
                                                                     start_swa_m_iters)
         q_swa_log_sigmas_iters, q_swa_log_sigma = stochastic_iterate_averaging(q_log_sigmas_dim,
-                                                                              start_swa_m_iters)
-        averaged_variational_params = np.hstack((q_swa_means_iters, q_swa_log_sigmas_iters))
-        averaged_variational_param_list.append(averaged_variational_params)
+                                                                              start_swa_s_iters)
+
+        #averaged_variational_params = np.hstack((q_swa_means_iters, q_swa_log_sigmas_iters))
+
+        #q_swa_log_sigmas_iters, q_swa_log_sigma = stochastic_iterate_averaging(q_log_sigmas_dim,
+        #                                                                      start_swa_s_iters)
+
+        #if start_swa_s_iters > start_swa_m_iters:
+        #    averaged_variational_params = np.hstack((q_swa_means_iters[start_swa_s_iters-start_swa_m_iters:], q_swa_log_sigmas_iters))
+        #else:
+        #    averaged_variational_params = np.hstack(
+        #        (q_swa_means_iters, q_swa_log_sigmas_iters[start_swa_m_iters-start_swa_s_iters:]))
+        #averaged_variational_param_list.append(averaged_variational_params)
+        averaged_variational_mean_list.append(q_swa_means_iters)
+        averaged_variational_sigmas_list.append(q_swa_log_sigmas_iters)
 
     optimisation_log['start_avg_mean_iters'] = start_swa_m_iters
     optimisation_log['start_avg_sigma_iters'] = start_swa_s_iters
+
     optimisation_log['r_hat_mean'] = rhat_mean_windows
     optimisation_log['r_hat_sigma'] = rhat_sigma_windows
 
-    return (variational_param, variational_param_history_chains, averaged_variational_param_list,
+    optimisation_log['r_hat_mean_halfway'] = rhat_mean_halfway
+    optimisation_log['r_hat_sigma_halfway'] = rhat_sigma_halfway
+
+    return (variational_param, variational_param_history_chains, averaged_variational_mean_list,
+            averaged_variational_sigmas_list,
             np.array(value_history), np.array(log_norm_history), optimisation_log)
 
 
 
-def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
+
+def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param, K,
                         has_log_norm=False, window=500,  learning_rate=.01,
                         epsilon=.000001, rhat_window=500, averaging=True, n_optimisers=1,
-                               r_mean_threshold=1.15, r_sigma_threshold=1.20, learning_rate_end=None):
+                               r_mean_threshold=1.15, r_sigma_threshold=1.20, tail_avg_iters=2000,
+                               learning_rate_end=None):
     local_grad_history = []
     local_log_norm_history = []
     value_history = []
@@ -526,13 +571,13 @@ def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
     averaged_variational_param_history_list = []
     variational_param_list = []
     averaged_variational_param_list = []
+    averaged_variational_mean_list = []
+    averaged_variational_sigmas_list = []
     window_size=500
     grad_val= 0.
     grad_squared=0
     beta1=0.9
     beta2=0.999
-    r_mean_threshold= 1.10
-    r_sigma_threshold = 1.20
 
     for o in range(n_optimisers):
         variational_param_history = []
@@ -603,10 +648,14 @@ def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
 
     variational_param_history_chains = np.stack(variational_param_history_list, axis=0)
     rhats = compute_R_hat_adaptive_numpy(variational_param_history_chains, window_size=rhat_window)
-    rhat_mean_windows, rhat_sigma_windows = rhats[:,:K], rhats[:,K:]
 
-    start_swa_m_iters = n_iters - 2000
-    start_swa_s_iters = n_iters - 2000
+    rhats_halfway = compute_R_hat_halfway(variational_param_history_chains, interval=100, start=200)
+
+    rhat_mean_windows, rhat_sigma_windows = rhats[:,:K], rhats[:,K:]
+    rhat_mean_halfway, rhat_sigma_halfway = rhats_halfway[:, :K], rhats_halfway[:, K:]
+
+    start_swa_m_iters = n_iters - tail_avg_iters
+    start_swa_s_iters = n_iters - tail_avg_iters
     for ee, w in enumerate(rhat_mean_windows):
         if ee == (rhat_mean_windows.shape[0] - 1):
             continue
@@ -631,9 +680,23 @@ def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
         q_swa_means_iters, q_swa_mean = stochastic_iterate_averaging(q_locs_dim,
                                                                     start_swa_m_iters)
         q_swa_log_sigmas_iters, q_swa_log_sigma = stochastic_iterate_averaging(q_log_sigmas_dim,
-                                                                              start_swa_m_iters)
-        averaged_variational_params = np.hstack((q_swa_means_iters, q_swa_log_sigmas_iters))
-        averaged_variational_param_list.append(averaged_variational_params)
+                                                                              start_swa_s_iters)
+
+        #averaged_variational_params = np.hstack((q_swa_means_iters, q_swa_log_sigmas_iters))
+
+
+
+        #q_swa_log_sigmas_iters, q_swa_log_sigma = stochastic_iterate_averaging(q_log_sigmas_dim,
+        #                                                                      start_swa_s_iters)
+
+        #if start_swa_s_iters > start_swa_m_iters:
+        #    averaged_variational_params = np.hstack((q_swa_means_iters[start_swa_s_iters-start_swa_m_iters:], q_swa_log_sigmas_iters))
+        #else:
+        #    averaged_variational_params = np.hstack(
+        #        (q_swa_means_iters, q_swa_log_sigmas_iters[start_swa_m_iters-start_swa_s_iters:]))
+        #averaged_variational_param_list.append(averaged_variational_params)
+        averaged_variational_mean_list.append(q_swa_means_iters)
+        averaged_variational_sigmas_list.append(q_swa_log_sigmas_iters)
 
     optimisation_log['start_avg_mean_iters'] = start_swa_m_iters
     optimisation_log['start_avg_sigma_iters'] = start_swa_s_iters
@@ -641,6 +704,10 @@ def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
     optimisation_log['r_hat_mean'] = rhat_mean_windows
     optimisation_log['r_hat_sigma'] = rhat_sigma_windows
 
-    return (variational_param, variational_param_history_chains, averaged_variational_param_list,
+    optimisation_log['r_hat_mean_halfway'] = rhat_mean_halfway
+    optimisation_log['r_hat_sigma_halfway'] = rhat_sigma_halfway
+
+    return (variational_param, variational_param_history_chains, averaged_variational_mean_list,
+            averaged_variational_sigmas_list,
             np.array(value_history), np.array(log_norm_history), optimisation_log)
 
