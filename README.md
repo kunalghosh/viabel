@@ -1,5 +1,35 @@
 #  `viabel`: Variational Inference Approximation Bounds that are Efficient and Lightweight
 
+
+
+## Structure
+
+The vb.py contains all the basic vb functions, making objective
+functions based on divergence measure and the gradient 
+function like black_box_klvi, black_box_chivi, black_box_klvi_pd(with
+path gradients) etc. 
+ The next set of functions it contains all the approximate
+ families: mean field gaussian, t- distribution.  The full
+ rank Gaussian is obtained using t-distribution and passing a very high
+ degree of freedom. 
+ The optimizer.py file contains all the optimisers used, currently
+ it supports three: Adagrad, RMSProp, and ADAM. 
+ 
+ The file optimisation_diagnostics contains functions for
+ diagnosing convergence such as: Rhat function, k-hat function , autocorrelation
+ function(acf) and monte carlo standard error (mcse) which all take
+ chains of iterates and use all the chains and iterates to compute
+ those statistics for each variational parameter of the model.
+ 
+ The file optimizer_stopping_rule.py file contains the same optimisers
+ with some modifications made to be used as automatic stopping using
+ some stopping rule. These files will be merged soon.
+ 
+ The file tempering_Schedule contains functions for scheduling 
+ tempering. 
+ The file functions.py contains some more utility functions.
+
+
 ## Description
 
 This package computes bounds errors of the mean, standard deviation, and variances

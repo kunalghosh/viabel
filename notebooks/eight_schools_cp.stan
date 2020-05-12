@@ -15,4 +15,4 @@ model {
   tau ~ cauchy(0, 5);
   theta ~ normal(mu, tau);
   y ~ normal(theta, sigma);
-}
+}   

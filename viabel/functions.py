@@ -4,6 +4,7 @@ import autograd.numpy as np
 from autograd.extend import primitive
 
 
+from psis import psislw
 
 def compute_R_hat(chains, warmup=500):
     #first axis is relaisations, second is iters
@@ -148,3 +149,19 @@ def compute_posterior_moments(prior_mean, prior_covariance, noise_variance, x, y
     post_mu = prior_precision@prior_mean + (1./noise_variance)* x.T@ y
     post_mu = post_S@ post_mu
     return post_mu, post_S
+
+
+
+def get_samples_and_log_weights(logdensity, var_family, var_param, n_samples):
+    samples = var_family.sample(var_param, n_samples)
+    log_weights = logdensity(samples) - var_family.logdensity(samples, var_param)
+    return samples, log_weights
+
+
+
+def psis_correction(logdensity, var_family, var_param, n_samples):
+    samples, log_weights = get_samples_and_log_weights(logdensity, var_family,
+                                                       var_param, n_samples)
+    smoothed_log_weights, khat = psislw(log_weights)
+    return samples.T, smoothed_log_weights, khat
+
