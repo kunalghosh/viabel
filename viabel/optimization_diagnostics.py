@@ -7,6 +7,7 @@ from .functions import compute_R_hat, compute_R_hat_halfway
 
 
 def monte_carlo_se(iterate_chains, warmup=500):
+
     chains = iterate_chains[:, warmup:, :]
     n_chains, N_iters, K = chains.shape[0], chains.shape[1], chains.shape[2]
     mcse_combined_list = np.zeros((N_iters,K))
@@ -21,13 +22,19 @@ def monte_carlo_se(iterate_chains, warmup=500):
         mcse_per_chain = np.sqrt(variances / n_iters)
         mcse_combined = np.sqrt(variances_combined/(i*n_chains))
         mcse_combined_list[i] = mcse_combined
-    #print(mcse_combined_list[:20,:5])
 
     #print(mcse_per_chain.shape)
     return mcse_per_chain, mcse_combined_list
 
+
 # compute mcmcse for a chain/array
 def monte_carlo_se2(iterate_chains, warmup=500, param_idx=0):
+    '''
+    compute monte carlo standard error for all chains and one parameter at a time.
+    :param iterate_chains:
+    :param warmup: warmup iterates
+    :return: array of mcse error for all chains for a particular variational parameter.
+    '''
     chains = iterate_chains[:, warmup:, param_idx]
     n_chains, N_iters = chains.shape[0], chains.shape[1]
     mcse_combined_list = np.zeros(N_iters)
@@ -46,6 +53,12 @@ def monte_carlo_se2(iterate_chains, warmup=500, param_idx=0):
 
 
 def montecarlo_se(iterate_chains, warmup=500):
+    '''
+    compute monte carlo standard error for all chains and all parameters at once.
+    :param iterate_chains:
+    :param warmup:
+    :return: array of mcse error for using all chains at once and for all parameters.
+    '''
     n_chains, N_iters, K = iterate_chains.shape[0], iterate_chains.shape[1], iterate_chains.shape[2]
     chains_flat = np.reshape(iterate_chains, (n_chains * N_iters, K))
     variances_combined = np.var(chains_flat, ddof=1, axis=0)
@@ -67,6 +80,14 @@ def acf(iterate_chains, warmup=500, param_idx=0):
 
 
 def autocorrelation(iterate_chains, warmup=500, param_idx=0, lag_max=80):
+    '''
+    computes autocorrelation using ALL chains for a particular variational parameter.
+    :param iterate_chains:
+    :param warmup:
+    :param param_idx:
+    :param lag_max:
+    :return:
+    '''
     chains = iterate_chains[:, warmup:, param_idx]
     means = np.mean(chains, axis=1)
     variances = np.var(chains, ddof=1, axis=1)
@@ -79,8 +100,6 @@ def autocorrelation(iterate_chains, warmup=500, param_idx=0, lag_max=80):
 
     var_chains = np.mean(variances, axis=0)
     var_pooled = ((n_iters - 1.) * var_chains + var_between) /n_iters
-    #var_hat, psrf = compute_R_hat(chains, warmup)
-    #K = chains.shape[2] // 2
     n_pad = int(2**np.ceil(1. + np.log2(n_iters)))
     freqs =   np.fft.rfft(chains - np.expand_dims(means, axis=1), n_pad)
     autocov = np.fft.irfft(np.abs(freqs)**2)[:,:n_iters].real
@@ -99,12 +118,20 @@ def autocorrelation(iterate_chains, warmup=500, param_idx=0, lag_max=80):
             rho_t =rho_t
         lag = lag + 1
 
-    #print(rho_t)
     neff = n_iters *n_chains /(1 + 2*rho_t)
     return neff, rho_t, autocov, np.asarray(a)
 
 
 def compute_khat_iterates(iterate_chains, warmup=500, param_idx=0, increasing= True, fraction=0.05):
+    '''
+    function computes the khat for iterates of VI, preferable to run it after approximate convergence .
+    :param iterate_chains:
+    :param warmup:
+    :param param_idx:
+    :param increasing:
+    :param fraction:
+    :return:
+    '''
     chains = iterate_chains[:, warmup:, param_idx]
     n_iters = chains.shape[1]
     n_chains = chains.shape[0]
