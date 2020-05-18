@@ -180,7 +180,7 @@ if model == model4:
 
     if optimizer == 'rmsprop':
         klvi_var_param_rms, klvi_var_param_list_rms, avg_klvi_mean_list_rms, avg_klvi_sigmas_list_rms, klvi_history_rms, _, op_log_mf_rms = \
-            rmsprop_workflow_optimize(11000, obj_and_grad, init_var_param, k, learning_rate=.009, n_optimisers=1, stopping_rule=2, tolerance=0.02)
+            rmsprop_workflow_optimize(11000, obj_and_grad, init_var_param, k, learning_rate=.012, n_optimisers=1, stopping_rule=2, tolerance=0.02, plotting=True)
 
         n_samples = 20000
         ia_var_params=  np.concatenate((avg_klvi_mean_list_rms[0], avg_klvi_sigmas_list_rms[0]), axis=0)
@@ -740,60 +740,50 @@ elif model == model6:
                 rmsprop_workflow_optimize(14000, klvi_fr_objective_and_grad_unp, init_var_param,
                                           n_params_unp, learning_rate=.013,n_optimisers=1, tolerance=0.02, tail_avg_iters=200, stopping_rule=1)
 
-            cov_iters_fr_rms = [fr_gaussian_unp.mean_and_cov(a)[1] for a in klvi_var_param_list_rms_unp[0]]
-            mean_iters_fr_rms = [fr_gaussian_unp.mean_and_cov(a)[0] for a in klvi_var_param_list_rms_unp[0]]
+        ia_var_params=  np.concatenate((avg_klvi_mean_list_rms_unp[0], avg_klvi_sigmas_list_rms_unp[0]), axis=0)
+        print(ia_var_params)
+        samples, smoothed_log_weights, khat = psis_correction(radon_unp_log_density, fn_density,
+                                                              klvi_var_param_list_rms_unp[0,-1,:], n_samples)
+        samples_ia, smoothed_log_weights_ia, khat_ia = psis_correction(radon_unp_log_density, fn_density,
+                                                                       ia_var_params, n_samples)
 
-            cov_iters_fr_rms_flat = [fr_gaussian_unp.mean_and_cov(a)[1].flatten() for a in klvi_var_param_list_rms_unp[0]]
-            cov_iters_fr_rms_std = [np.sqrt(np.diag(fr_gaussian_unp.mean_and_cov(a)[1])) for a in
-                                    klvi_var_param_list_rms_unp[0]]
+        print(true_mean)
+        print(klvi_var_param_list_rms_unp[0,-1,:k])
+        print('khat:', khat)
+        print('khat ia:', khat_ia)
+        cov_iters_fr_rms = fn_density.mean_and_cov(klvi_var_param_rms_unp)[1]
+        cov_iters_fr_rms_ia1 = fn_density.mean_and_cov(ia_var_params)[1]
+        print('Difference between analytical mean and HMC mean:',
+              np.sqrt(np.mean(np.square(klvi_var_param_rms_unp[:k].flatten() - true_mean.flatten()))))
+        print('Difference between analytical cov and HMC cov:',
+              np.sqrt(np.mean(np.square(cov_iters_fr_rms.flatten() - true_cov.flatten()))))
+        print('Difference between analytical mean and HMC mean-IA:',
+              np.sqrt(np.mean(np.square(ia_var_params[:k].flatten() - true_mean.flatten()))))
+        print('Difference between analytical cov and HMC cov-IA:',
+              np.sqrt(np.mean(np.square(cov_iters_fr_rms_ia1.flatten() - true_cov.flatten()))))
 
-            cov_iters_fr_rms_ia = [fr_gaussian_unp.mean_and_cov(np.hstack((np.zeros(n_params_unp), a)))[1] for a in
-                                   avg_klvi_sigmas_list_rms_unp[0]]
-            cov_iters_fr_rms_ia_flat = [fr_gaussian_unp.mean_and_cov(np.hstack((np.zeros(n_params_unp), a)))[1].flatten()
-                                        for a in
-                                        avg_klvi_sigmas_list_rms_unp[0]]
-            cov_iters_fr_rms_ia_std = [
-                np.sqrt(np.diag(fr_gaussian_unp.mean_and_cov(np.hstack((np.zeros(n_params_unp), a)))[1])) for a in
-                avg_klvi_sigmas_list_rms_unp[0]]
+    elif optimiser == 'adagrad':
+        a,b,c,d,e = \
+            adagrad_workflow_optimize(6000, klvi_fr_objective_and_grad_unp, init_var_param,
+                                      n_params_unp, learning_rate=.010,n_optimizers=1, tolerance=0.02, stopping_rule=1)
+        samples, smoothed_log_weights, khat = psis_correction(radon_unp_log_density, fn_density,
+                                                              b[-1], n_samples)
+        samples_ia, smoothed_log_weights_ia, khat_ia = psis_correction(radon_unp_log_density, fn_density,
+                                                                       a, n_samples)
+        print(true_mean)
+        print(b[-1][:k])
+        print('khat:', khat)
+        print('khat ia:', khat_ia)
+        cov_iters_fr_rms = fn_density.mean_and_cov(b[-1])[1]
+        cov_iters_fr_rms_ia1 = fn_density.mean_and_cov(a)[1]
+        print('Difference between analytical mean and HMC mean:',
+              np.sqrt(np.mean(np.square(b[-1][:k].flatten() - true_mean.flatten ()))))
+        print('Difference between analytical cov and HMC cov:',
+              np.sqrt(np.mean(np.square(cov_iters_fr_rms.flatten() - true_cov.flatten()))))
 
-            print(op_log_fr_rms_unp['start_avg_mean_iters'])
-            print(op_log_fr_rms_unp['start_avg_sigma_iters'])
-            print('Difference between analytical mean and VI-RMSProp-IA mean:',
-                  np.sum(np.square(avg_klvi_mean_list_rms_unp[0][-1] - true_mean_unp)))
-            print('Difference between analytical mean and VI-RMSProp mean:',
-                  np.sum(np.square(klvi_var_param_list_rms_unp[0][-1, :n_params_unp] - true_mean_unp)))
-
-            print('Difference between analytical cov and VI-RMSProp-IA cov:',
-                  np.sum(np.square(cov_iters_fr_rms_ia[-1] - true_cov_unp)))
-            print('Difference between analytical cov and VI-RMSProp cov:',
-                  np.sum(np.square(cov_iters_fr_rms[-1] - true_cov_unp)))
-            print('Difference between analytical std dev and VI-RMSProp-IA std dev:',
-                  np.sum(np.square(cov_iters_fr_rms_ia_std[-1] - true_sigma_unp)))
-            print('Difference between analytical std dev and VI-RMSProp std dev:',
-                  np.sum(np.square(cov_iters_fr_rms_std[-1] - true_sigma_unp)))
-
-        elif optimiser == 'adagrad':
-            a,b,c,d,e = \
-                adagrad_workflow_optimize(6000, klvi_fr_objective_and_grad_unp, init_var_param,
-                                          n_params_unp, learning_rate=.010,n_optimizers=1, tolerance=0.02, stopping_rule=1)
-            samples, smoothed_log_weights, khat = psis_correction(radon_unp_log_density, fn_density,
-                                                                  b[-1], n_samples)
-            samples_ia, smoothed_log_weights_ia, khat_ia = psis_correction(radon_unp_log_density, fn_density,
-                                                                           a, n_samples)
-            print(true_mean)
-            print(b[-1][:k])
-            print('khat:', khat)
-            print('khat ia:', khat_ia)
-            cov_iters_fr_rms = fn_density.mean_and_cov(b[-1])[1]
-            cov_iters_fr_rms_ia1 = fn_density.mean_and_cov(a)[1]
-            print('Difference between analytical mean and HMC mean:',
-                  np.sqrt(np.mean(np.square(b[-1][:k].flatten() - true_mean.flatten ()))))
-            print('Difference between analytical cov and HMC cov:',
-                  np.sqrt(np.mean(np.square(cov_iters_fr_rms.flatten() - true_cov.flatten()))))
-
-            print('Difference between analytical mean and HMC mean-IA:',
-                  np.sqrt(np.mean(np.square(a[:k].flatten() - true_mean.flatten()))))
-            print('Difference between analytical cov and HMC cov-IA:',
-                  np.sqrt(np.mean(np.square(cov_iters_fr_rms_ia1.flatten() - true_cov.flatten()))))
+        print('Difference between analytical mean and HMC mean-IA:',
+              np.sqrt(np.mean(np.square(a[:k].flatten() - true_mean.flatten()))))
+        print('Difference between analytical cov and HMC cov-IA:',
+              np.sqrt(np.mean(np.square(cov_iters_fr_rms_ia1.flatten() - true_cov.flatten()))))
 
 
