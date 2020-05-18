@@ -66,6 +66,16 @@ def compute_R_hat_halfway(chains, interval=100, start=1000):
     return np.array(r_hats_halfway)
 
 
+def compute_R_hat_halfway_light(chains, interval=100, start=1000):
+    n_chains, n_iters, K= chains.shape
+    n_subchains = n_iters //interval
+    r_hats_halfway = list()
+    r_hat_current = compute_R_hat(chains, warmup=n_iters//2)[1]
+    #r_hats_halfway.append(r_hat_current)
+    #return np.array(r_hats_halfway)
+    return r_hat_current
+
+
 def stochastic_iterate_averaging(estimate, start):
     N = estimate.shape[0]
     if N - start <= 0:

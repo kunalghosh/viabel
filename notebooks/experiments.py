@@ -2,7 +2,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-all
+
 from viabel import all_bounds
 from viabel.vb import black_box_klvi, black_box_chivi, adagrad_optimize
 from utils import Timer
@@ -92,12 +92,15 @@ def improve_with_psis(logdensity, var_family, var_param, n_samples,
 ## Plotting ##
 
 def plot_approx_and_exact_contours(logdensity, var_family, var_param,
-                                   xlim=[-10,10], ylim=[-3, 3],
-                                   cmap2='Reds', savepath=None):
-    xlist = np.linspace(*xlim, 100)
-    ylist = np.linspace(*ylim, 100)
+                                   xlim=[-10,10], ylim=[-7, 7],
+                                   cmap2='Reds', savepath=None, aux_var=None):
+    xlist = np.linspace(*xlim, 500)
+    ylist = np.linspace(*ylim, 500)
     X, Y = np.meshgrid(xlist, ylist)
     XY = np.concatenate([np.atleast_2d(X.ravel()), np.atleast_2d(Y.ravel())]).T
+    if aux_var is not None:
+        a1= XY.shape[0]
+        XY = np.concatenate([XY, np.repeat(aux_var[None,:], a1, axis=0)], axis=1)
     zs = np.exp(logdensity(XY))
     Z = zs.reshape(X.shape)
     zsapprox = np.exp(var_family.logdensity(XY, var_param))

@@ -102,6 +102,7 @@ def autocorrelation(iterate_chains, warmup=500, param_idx=0, lag_max=80):
     var_pooled = ((n_iters - 1.) * var_chains + var_between) /n_iters
     n_pad = int(2**np.ceil(1. + np.log2(n_iters)))
     freqs =   np.fft.rfft(chains - np.expand_dims(means, axis=1), n_pad)
+    #print(freqs)
     autocov = np.fft.irfft(np.abs(freqs)**2)[:,:n_iters].real
     autocov= autocov / np.arange(n_iters, 0, -1)
     rho_t = 0
@@ -122,7 +123,7 @@ def autocorrelation(iterate_chains, warmup=500, param_idx=0, lag_max=80):
     return neff, rho_t, autocov, np.asarray(a)
 
 
-def compute_khat_iterates(iterate_chains, warmup=500, param_idx=0, increasing= True, fraction=0.05):
+def compute_khat_iterates(iterate_chains, warmup=500, param_idx=0, increasing= True, fraction=0.15):
     '''
     function computes the khat for iterates of VI, preferable to run it after approximate convergence .
     :param iterate_chains:

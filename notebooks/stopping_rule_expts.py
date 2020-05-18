@@ -1,4 +1,10 @@
 
+# script to run expts with iterate averaging from the beginning
+#
+#
+#
+#
+
 import sys, os
 import pickle
 sys.path.append('..')
@@ -25,8 +31,8 @@ from viabel.functions import compute_posterior_moments
 from data_generator import (data_generator_linear)
 
 from viabel.vb import  rmsprop_IA_optimize_with_rhat, adam_IA_optimize_with_rhat
-from viabel.optimizers_stopping_rule import adagrad_optimize_stop, adam_IA_optimize_stop, \
-    rmsprop_IA_optimize_stop
+from viabel.optimizers_stopping_rule import adagrad_optimize_stop, adam_optimize_stop, \
+    rmsprop_optimize_stop
 
 
 from viabel.data_process  import   Concrete
@@ -150,7 +156,7 @@ if model == model4:
 
     if optimizer == 'rmsprop':
         klvi_var_param_rms, klvi_var_param_list_rms, avg_klvi_mean_list_rms, avg_klvi_sigmas_list_rms, klvi_history_rms, _, op_log_mf_rms = \
-            rmsprop_IA_optimize_stop(11000, obj_and_grad, init_var_param, k, learning_rate=.006, n_optimisers=1, stopping_rule=2, tolerance=0.01)
+            rmsprop_optimize_stop(11000, obj_and_grad, init_var_param, k, learning_rate=.006, n_optimisers=1, stopping_rule=2, tolerance=0.01)
 
         n_samples = 20000
         ia_var_params=  np.concatenate((avg_klvi_mean_list_rms[0][-1], avg_klvi_sigmas_list_rms[0][-1]), axis=0)
@@ -181,7 +187,7 @@ if model == model4:
 
     elif optimizer == 'adam':
         klvi_var_param_adam, klvi_var_param_list_adam, avg_klvi_mean_list_adam, avg_klvi_sigmas_list_adam, klvi_history_adam, _, op_log_mf_adam = \
-            adam_IA_optimize_stop(11000, obj_and_grad, init_var_param, k, learning_rate=.015,n_optimisers=1)
+            adam_optimize_stop(11000, obj_and_grad, init_var_param, k, learning_rate=.015,n_optimisers=1)
 
 
         n_samples = 40000
@@ -205,7 +211,6 @@ if model == model4:
         n_samples = 40000
         samples, smoothed_log_weights, khat = psis_correction(stan_log_density, fn_density,
                                                               b[-1], n_samples)
-
         samples_ia, smoothed_log_weights_ia, khat_ia = psis_correction(stan_log_density, fn_density,
                                                               a, n_samples)
         print(true_mean)
@@ -296,8 +301,6 @@ elif model == model5:
         fn_density = fr_g_var_family
         init_var_param = init_fr_var_param
         obj_and_grad = klvi_fr_objective_and_grad
-
-
 
 
 
@@ -403,7 +406,7 @@ elif model == model3:
 
     if optimizer == 'rmsprop':
         klvi_var_param_rms, klvi_var_param_list_rms, avg_klvi_mean_list_rms, avg_klvi_sigmas_list_rms, klvi_history_rms, _, op_log_mf_rms = \
-            rmsprop_IA_optimize_stop(14000, obj_and_grad, init_var_param, k, learning_rate=.008, n_optimisers=1, stopping_rule=2, tolerance=0.01)
+            rmsprop_optimize_stop(14000, obj_and_grad, init_var_param, k, learning_rate=.008, n_optimisers=1, stopping_rule=2, tolerance=0.01)
 
         n_samples = 20000
         ia_var_params=  np.concatenate((avg_klvi_mean_list_rms[0][-1], avg_klvi_sigmas_list_rms[0][-1]), axis=0)
@@ -431,7 +434,7 @@ elif model == model3:
 
     elif optimizer == 'adam':
         klvi_var_param_adam, klvi_var_param_list_adam, avg_klvi_mean_list_adam, avg_klvi_sigmas_list_adam, klvi_history_adam, _, op_log_mf_adam = \
-            adam_IA_optimize_stop(11000, obj_and_grad, init_var_param, k, learning_rate=.015,n_optimisers=1)
+            adam_optimize_stop(11000, obj_and_grad, init_var_param, k, learning_rate=.015,n_optimisers=1)
 
 
         n_samples = 40000

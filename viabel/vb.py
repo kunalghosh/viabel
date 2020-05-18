@@ -21,6 +21,7 @@ from functools import partial
 
 import tqdm
 import scipy.stats as stats
+from .tempering_schedule import  adaptive_tempering, sigmoid_tempering, telescope_tempering
 
 from ._distributions import multivariate_t_logpdf
 
@@ -272,9 +273,7 @@ def black_box_klvi2(var_family, logdensity, n_samples):
         scaled_values = np.exp(log_weights - log_norm)
         Neff = np.sum(scaled_values)**2 / np.sum(scaled_values**2)
         return obj_value, obj_grad,  paretok, Neff
-
     return objective_grad_and_log_norm
-
 
 
 def  black_box_chivi_robust(alpha, var_family, logdensity, S_init=400, c=1.5, Mstar = 10, kstar = 8., S_max=5000,
@@ -356,7 +355,6 @@ def  black_box_chivi_robust(alpha, var_family, logdensity, S_init=400, c=1.5, Ms
         obj_value = np.log(np.mean(scaled_values))/alpha + log_norm
         obj_grad = alpha*log_weights_vjp(var_param, S, seed, scaled_values) / scaled_values.size
 
-
         if not samples_changed:
             if paretok < kstar and compute_ESS(log_weights[:int(S/c)]) > Mstar:
                 S = int(S/c)
@@ -398,7 +396,6 @@ def black_box_klvi_tempered(var_family, logdensity, n_samples, schedule=None):
         Neff = np.sum(scaled_values)**2 / np.sum(scaled_values**2)
         return obj_value, obj_grad,  paretok, Neff, epsilon
     return objective_grad_and_log_norm
-
 
 
 def black_box_klvi_tempered2(var_family, logdensity, S_init=400, c=1.5, Mstar = 10, kstar = 8., S_max=5000,
@@ -494,6 +491,53 @@ def black_box_klvi_tempered2(var_family, logdensity, S_init=400, c=1.5, Mstar = 
 
 
     return objective_grad_and_log_norm
+
+
+
+def black_box_exclusive_klvi(var_family, logdensity, S_init=400, c=1.5, Mstar = 10, kstar = 8., S_max=5000,
+                            S_min=200):
+
+    def compute_log_weights(var_param, n_samples, epsilon, seed):
+        samples = var_family.sample(var_param, n_samples, seed)
+        log_weights = logdensity(samples)*epsilon - var_family.logdensity(samples, var_param)
+        return log_weights
+
+
+    def compute_objective_mean(var_param, n_samples, epsilon, seed):
+        log_weights = compute_log_weights(var_param, n_samples, epsilon, seed)
+        return -np.mean(log_weights)
+
+
+    def compute_ESS(log_weights):
+        log_norm = np.max(log_weights)
+        scaled_values = np.exp(log_weights - log_norm)
+        Neff1 = np.sum(scaled_values)**2 / np.sum(scaled_values**2)
+        return Neff1
+
+    log_weights_vjp = vector_jacobian_product(compute_objective_mean)
+
+    def objective_grad_and_log_norm(var_param, S_iter=0, epsilon=0, iter_count=0):
+        """Provides a stochastic estimate of the variational lower bound."""
+        if not S_iter:
+            S = S_init
+        else:
+            S = S_iter
+
+        if S < S_min:
+            S = S_min
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -942,7 +986,18 @@ def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
                         #epsilon = tempering_scheme(epsilon, i, curr_learning_rate)
                         eps = eps + 0.001
                         log_norm = 0
-                        if paretok > 0.05:
+                        if paretok > 0.01:
+                            pareto_k_list.append(paretok)
+                            neff_list.append(Seff)
+
+                    elif has_log_norm == 6:
+                        Seff_prev= Seff
+                        obj_val, obj_grad, S, eps, paretok, Seff = objective_and_grad(variational_param, S, eps)
+                        #epsilon = tempering_scheme(epsilon, i, curr_learning_rate)
+                        eps = adaptive_tempering(eps, Seff, Seff_prev)
+                        eps = eps + 0.001
+                        log_norm = 0
+                        if paretok > 0.01:
                             pareto_k_list.append(paretok)
                             neff_list.append(Seff)
 
