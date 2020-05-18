@@ -153,16 +153,11 @@ def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
     value_history = []
     log_norm_history = []
     variational_param = init_param.copy()
-    variational_param_history = []
-    averaged_variational_param_history = []
-    start_avg_iter = n_iters // 1.3
     sum_grad_norm = 0.
     alpha = 0.99
     scaled_sum_grad_norm = 0.
     variational_param_history_list = []
-    averaged_variational_param_history_list = []
     variational_param_list = []
-    averaged_variational_param_list = []
     averaged_variational_mean_list = []
     averaged_variational_sigmas_list = []
     pareto_k_list = []
