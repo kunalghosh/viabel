@@ -329,9 +329,9 @@ def adagrad_workflow_optimize(n_iters, objective_and_grad, init_param,K,
 
         fig = plt.figure(figsize=(4.2, 2.5))
         ax = fig.add_subplot(1, 1, 1)
-        ax.plot(rhot_array[k, :100], label='sigma-1')
-        ax.plot(rhot_array[k + 1, :100], label='sigma-2')
-        ax.plot(rhot_array[k + 2, :100], label='sigma-3')
+        ax.plot(rhot_array[K, :100], label='sigma-1')
+        ax.plot(rhot_array[K + 1, :100], label='sigma-2')
+        ax.plot(rhot_array[K + 2, :100], label='sigma-3')
         plt.xlabel('Lags')
         plt.ylabel('autocorrelation')
         plt.legend()
@@ -347,12 +347,12 @@ def adagrad_workflow_optimize(n_iters, objective_and_grad, init_param,K,
         # print(mcmc_se2[:300,1])
         names = khat_max_inds[-8:]
 
-        names_loc = names[names < k]
-        names_sigma = names[names >= k]
+        names_loc = names[names < K]
+        names_sigma = names[names >= K]
 
         values = khat_vals_max
-        values_loc = values[names < k]
-        values_sigma = values[names >= k]
+        values_loc = values[names < K]
+        values_sigma = values[names >= K]
 
         # fig = plt.figure(figsize=(5.5,3.4))
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7, 5))
@@ -366,8 +366,8 @@ def adagrad_workflow_optimize(n_iters, objective_and_grad, init_param,K,
 
         names = khat_max_inds[-8:]
         values = Neff_max
-        values_loc = values[names < k]
-        values_sigma = values[names >= k]
+        values_loc = values[names < K]
+        values_sigma = values[names >= K]
 
         ax2.scatter(names_loc, values_loc, color='b', marker='o')
         ax2.scatter(names_sigma, values_sigma, color='b', marker='*')
@@ -375,7 +375,7 @@ def adagrad_workflow_optimize(n_iters, objective_and_grad, init_param,K,
 
         ax2.set_ylabel('ESS_iterates')
         ax2.set_xlabel('Indices')
-        plt.savefig(f'Khat_ESS_max_linear_reg_adagrad_{k}_15.pdf')
+        plt.savefig(f'Khat_ESS_max_linear_reg_adagrad_{K}_15.pdf')
 
     return (smoothed_opt_param, variational_param_history,
             np.array(value_history), np.array(log_norm_history), optimisation_log)
@@ -545,7 +545,7 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
 
                     # print(np.max(mcse_all[:,-1]))
                     if stopping_rule == 2 and stop == False and sto_process_convergence == True and i > 1500 and \
-                            t % eval_elbo == 0 and (np.nanmedian(mcse_all[:, -1]) <= 0.03) and j > 500:
+                            t % eval_elbo == 0 and (np.nanmedian(mcse_all[:, -1]) <= 0.20) and j > 500:
                         print('shit!')
                         stop = True
                         break
@@ -603,17 +603,17 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
                         khat_iterates = []
                         khat_iterates2 = []
                         # compute khat for iterates
-                        for k in range(pmz_size):
+                        for z in range(pmz_size):
                             neff, rho_t_sum, autocov, rho_t = autocorrelation(
-                                variational_param_post_conv_history_chains, 0, k)
+                                variational_param_post_conv_history_chains, 0, z)
                             # mcse_se_combined = monte_carlo_se2(variational_param_history_chains, start_stats,i)
-                            Neff[k] = neff
+                            Neff[z] = neff
                             # mcmc_se2.append(mcse_se_combined)
                             Rhot.append(rho_t)
-                            khat_i = compute_khat_iterates(variational_param_post_conv_history_chains, 0, k,
+                            khat_i = compute_khat_iterates(variational_param_post_conv_history_chains, 0, z,
                                                            increasing=True)
                             khat_iterates.append(khat_i)
-                            khat_i2 = compute_khat_iterates(variational_param_post_conv_history_chains, 0, k,
+                            khat_i2 = compute_khat_iterates(variational_param_post_conv_history_chains, 0, z,
                                                             increasing=False)
                             khat_iterates2.append(khat_i2)
 
@@ -665,6 +665,7 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
         averaged_variational_sigmas_list.append(smoothed_opt_param[K:])
 
     if stopping_rule ==2 and sto_process_convergence== False:
+        start_stats = t - tail_avg_iters
         variational_param_history_list.append(variational_param_history_array)
         variational_param_history_chains = np.stack(variational_param_history_list, axis=0)
         #variational_param_history = np.stack(variational_param_history)
@@ -677,6 +678,7 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
     if plotting:
         fig = plt.figure(figsize=(4.2, 2.5))
         ax = fig.add_subplot(1, 1, 1)
+        print(pmz_size)
         ax.plot(rhot_array[0, :100], label='loc-1')
         ax.plot(rhot_array[1, :100], label='loc-2')
         ax.plot(rhot_array[2, :100], label='loc-3')
@@ -688,9 +690,9 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
 
         fig = plt.figure(figsize=(4.2, 2.5))
         ax = fig.add_subplot(1, 1, 1)
-        ax.plot(rhot_array[k, :100], label='sigma-1')
-        ax.plot(rhot_array[k + 1, :100], label='sigma-2')
-        ax.plot(rhot_array[k + 2, :100], label='sigma-3')
+        ax.plot(rhot_array[K, :100], label='sigma-1')
+        ax.plot(rhot_array[K + 1, :100], label='sigma-2')
+        ax.plot(rhot_array[K + 2, :100], label='sigma-3')
         plt.xlabel('Lags')
         plt.ylabel('autocorrelation')
         plt.legend()
@@ -707,13 +709,12 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
         # print(mcmc_se2[:300,1])
         names = khat_max_inds[-8:]
 
-        names_loc = names[names < k]
-        names_sigma = names[names >= k]
+        names_loc = names[names < K]
+        names_sigma = names[names >= K]
 
         values = khat_vals_max
-        values_loc = values[names < k]
-        values_sigma = values[names >= k]
-
+        values_loc = values[names < K]
+        values_sigma = values[names >= K]
         # fig = plt.figure(figsize=(5.5,3.4))
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7, 5))
         ax1.scatter(names_loc, values_loc, color='b', marker='o')
@@ -726,8 +727,8 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
 
         names = khat_max_inds[-8:]
         values = Neff_max
-        values_loc = values[names < k]
-        values_sigma = values[names >= k]
+        values_loc = values[names < K]
+        values_sigma = values[names >= K]
 
         ax2.scatter(names_loc, values_loc, color='b', marker='o')
         ax2.scatter(names_sigma, values_sigma, color='b', marker='*')
@@ -735,14 +736,11 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
 
         ax2.set_ylabel('ESS_iterates')
         ax2.set_xlabel('Indices')
-        plt.savefig(f'Khat_ESS_max_linear_reg_rmsprop_{k}_15.pdf')
-
+        plt.savefig(f'Khat_ESS_max_linear_reg_rmsprop_{K}_15.pdf')
 
     return (variational_param, variational_param_history_chains, averaged_variational_mean_list,
             averaged_variational_sigmas_list,
             np.array(value_history), np.array(log_norm_history), optimisation_log)
-
-
 
 
 def adam_workflow_optimize(n_iters, objective_and_grad, init_param, K,
@@ -1038,6 +1036,7 @@ def adam_workflow_optimize(n_iters, objective_and_grad, init_param, K,
 
 
     if stopping_rule ==2 and sto_process_convergence== False:
+        start_stats = t - tail_avg_iters
         variational_param_history_list.append(variational_param_history_array)
         variational_param_history_chains = np.stack(variational_param_history_list, axis=0)
         #variational_param_history = np.stack(variational_param_history)
@@ -1060,9 +1059,9 @@ def adam_workflow_optimize(n_iters, objective_and_grad, init_param, K,
 
         fig = plt.figure(figsize=(4.2, 2.5))
         ax = fig.add_subplot(1, 1, 1)
-        ax.plot(rhot_array[k, :100], label='sigma-1')
-        ax.plot(rhot_array[k + 1, :100], label='sigma-2')
-        ax.plot(rhot_array[k + 2, :100], label='sigma-3')
+        ax.plot(rhot_array[K, :100], label='sigma-1')
+        ax.plot(rhot_array[K + 1, :100], label='sigma-2')
+        ax.plot(rhot_array[K + 2, :100], label='sigma-3')
         plt.xlabel('Lags')
         plt.ylabel('autocorrelation')
         plt.legend()
@@ -1081,12 +1080,12 @@ def adam_workflow_optimize(n_iters, objective_and_grad, init_param, K,
         # print(mcmc_se2[:300,1])
         names = khat_max_inds[-8:]
 
-        names_loc = names[names < k]
-        names_sigma = names[names >= k]
+        names_loc = names[names < K]
+        names_sigma = names[names >= K]
 
         values = khat_vals_max
-        values_loc = values[names < k]
-        values_sigma = values[names >= k]
+        values_loc = values[names < K]
+        values_sigma = values[names >= K]
 
         # fig = plt.figure(figsize=(5.5,3.4))
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7, 5))
@@ -1100,8 +1099,8 @@ def adam_workflow_optimize(n_iters, objective_and_grad, init_param, K,
 
         names = khat_max_inds[-8:]
         values = Neff_max
-        values_loc = values[names < k]
-        values_sigma = values[names >= k]
+        values_loc = values[names < K]
+        values_sigma = values[names >= K]
 
         ax2.scatter(names_loc, values_loc, color='b', marker='o')
         ax2.scatter(names_sigma, values_sigma, color='b', marker='*')
@@ -1109,7 +1108,7 @@ def adam_workflow_optimize(n_iters, objective_and_grad, init_param, K,
 
         ax2.set_ylabel('ESS_iterates')
         ax2.set_xlabel('Indices')
-        plt.savefig(f'Khat_ESS_max_linear_reg_adam_{k}_15.pdf')
+        plt.savefig(f'Khat_ESS_max_linear_reg_adam_{pmz_size}_15.pdf')
 
 
     return (variational_param, variational_param_history_chains, averaged_variational_mean_list,
