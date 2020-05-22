@@ -736,7 +736,7 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
 
         ax2.set_ylabel('ESS_iterates')
         ax2.set_xlabel('Indices')
-        plt.savefig(f'Khat_ESS_max_linear_reg_rmsprop_{K}_15.pdf')
+        plt.savefig(f'Khat_ESS_max_eight_School_rmsprop_{K}.pdf')
 
     return (variational_param, variational_param_history_chains, averaged_variational_mean_list,
             averaged_variational_sigmas_list,

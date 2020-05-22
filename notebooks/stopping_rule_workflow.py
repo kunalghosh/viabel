@@ -507,7 +507,7 @@ elif model == model1:
     try:
         cp = pickle.load(open('eight_schools_cp.pkl', 'rb'))
     except:
-        cp = pystan.StanModel(file='eight_schools_cp.stan', model_name='eight_School_cp_model')
+        cp = pystan.StanModel(file='stan_models/eight_schools_cp.stan', model_name='eight_School_cp_model')
         with open('eight_schools_cp.pkl', 'wb') as f:
             pickle.dump(cp, f)
 
@@ -586,7 +586,7 @@ elif model == model1:
                 rmsprop_workflow_optimize(8500, klvi_fr_objective_and_grad_ncp, init_fr_param1, k, learning_rate=.008, tolerance=0.03, n_optimisers=1, stopping_rule=2)
         elif pmz == 'cp':
             klvi_fr_var_param_rms_ncp1, klvi_fr_var_param_list_rms_ncp1, avg_klvi_fr_mean_list_rms_ncp1, avg_klvi_fr_sigmas_list_rms_ncp1, klvi_fr_history_rms_ncp1, _, op_log_fr_rms_ncp1 = \
-                rmsprop_workflow_optimize(10000, klvi_fr_objective_and_grad_cp, init_fr_param1, k, learning_rate=.009, n_optimisers=1, tolerance=0.008, stopping_rule=2, tail_avg_iters=300)
+                rmsprop_workflow_optimize(10000, klvi_fr_objective_and_grad_cp, init_fr_param1, k, learning_rate=.009, n_optimisers=1, tolerance=0.008, stopping_rule=2, tail_avg_iters=300, plotting=True)
 
 
         ia_var_params=  np.concatenate((avg_klvi_fr_mean_list_rms_ncp1[0], avg_klvi_fr_sigmas_list_rms_ncp1[0]), axis=0)
