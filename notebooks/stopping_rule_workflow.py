@@ -20,8 +20,15 @@ from viabel.vb import (mean_field_gaussian_variational_family,
 
 
 import  argparse
-parser = argparse.ArgumentParser()
+from posteriordb import PosteriorDatabase
+import os
+pdb_path = os.path.join('/Users/akashd/Desktop/research_repos/posteriordb/posteriordb/', "posterior_database")
+my_pdb = PosteriorDatabase(pdb_path)
+pos = my_pdb.posterior_names()
 
+
+
+parser = argparse.ArgumentParser()
 parser.add_argument('--model', default=1, type=int)
 parser.add_argument('--optimizer', default='rmsprop', type=str)
 args = parser.parse_args()
@@ -29,9 +36,7 @@ args = parser.parse_args()
 
 
 from experiments import black_box_klvi, psis_correction
-
 from viabel.functions import compute_posterior_moments
-
 from data_generator import (data_generator_linear)
 
 from viabel.vb import  rmsprop_IA_optimize_with_rhat, adam_IA_optimize_with_rhat
@@ -45,7 +50,15 @@ model2 = 'radon'
 model3 = 'concrete'
 model4 = 'linear-sim'
 model5 = 'robust-reg'
-model6= 'radon'
+model6= 'radon2'
+model7 = 'radon-full'
+model8= 'bnn1'
+model9 ='bnn2'
+model10 = 'covid19-1'
+model11 = 'covid19-2'
+model12 = 'covid19-3'
+model13 = 'covid19-4'
+model = 14
 
 approx = 'fr'
 #approx= 'mf'
@@ -63,6 +76,54 @@ elif args.model==5:
     model = model5
 elif args.model ==6:
     model = model6
+elif args.model ==7:
+    model = model7
+    posterior = my_pdb.posterior("radon_all-radon_county_intercept")
+elif args.model == 8:
+    model = model8
+    #posterior = my_pdb.posterior('')
+elif args.model == 9:
+    model = model9
+elif args.model ==10:
+    model = model10
+    posterior = my_pdb.posterior("ecdc0501-covid19imperial_v2")
+    modelObject = posterior.model
+    data= posterior.data
+    code_string = modelObject.code('stan')
+    #text_file = open("stan_models/stan-covid19imperial_v2.stan", "w")
+    with open('stan_models/stan-covid19imperial_v2.stan', 'w') as stan_file:
+        stan_file.write(code_string)
+
+
+elif args.model == 11:
+    model = model11
+    posterior = my_pdb.posterior("ecdc0501-covid19imperial_v3")
+    modelObject = posterior.model
+    data= posterior.data
+    code_string = modelObject.code('stan')
+    #text_file = open("stan_models/stan-covid19imperial_v2.stan", "w")
+    with open('stan_models/stan-covid19imperial_v3.stan', 'w') as stan_file:
+        stan_file.write(code_string)
+
+elif args.model ==12:
+    model = model12
+    posterior = my_pdb.posterior("ecdc0401-covid19imperial_v2")
+    modelObject = posterior.model
+    data= posterior.data
+    code_string = modelObject.code('stan')
+    #text_file = open("stan_models/stan-covid19imperial_v2.stan", "w")
+    with open('stan_models/stan-covid19-0401-imperial_v2.stan', 'w') as stan_file:
+        stan_file.write(code_string)
+
+elif args.model == 13:
+    model = model13
+    posterior = my_pdb.posterior("ecdc0401-covid19imperial_v3")
+    modelObject = posterior.model
+    data= posterior.data
+    code_string = modelObject.code('stan')
+    #text_file = open("stan_models/stan-covid19imperial_v2.stan", "w")
+    with open('stan_models/stan-covid19-0401-imperial_v3.stan', 'w') as stan_file:
+        stan_file.write(code_string)
 
 
 
@@ -82,7 +143,6 @@ def tranform_to_theta(ncp_samples):
 def get_ncp_approx_samples(var_family, opt_param, n_samples):
     ncp_samples = var_family.sample(opt_param, n_samples).T
     return ncp_samples, tranform_to_theta(ncp_samples)
-
 
 
 
@@ -505,24 +565,36 @@ elif model == model1:
     pmz = 'cp'
     optimiser = 'rmsprop'
     try:
-        cp = pickle.load(open('eight_schools_cp.pkl', 'rb'))
+        cp = pickle.load(open('stan_pkl/eight_schools_cp.pkl', 'rb'))
     except:
         cp = pystan.StanModel(file='stan_models/eight_schools_cp.stan', model_name='eight_School_cp_model')
-        with open('eight_schools_cp.pkl', 'wb') as f:
+        with open('stan_pkl/eight_schools_cp.pkl', 'wb') as f:
             pickle.dump(cp, f)
 
     try:
-        ncp = pickle.load(open('eight_schools_ncp.pkl', 'rb'))
+        ncp = pickle.load(open('stan_pkl/eight_schools_ncp.pkl', 'rb'))
     except:
         ncp = pystan.StanModel(file='eight_schools_ncp.stan', model_name='eight_School_ncp_model')
-        with open('eight_schools_ncp.pkl', 'wb') as f:
+        with open('stan_pkl/eight_schools_ncp.pkl', 'wb') as f:
             pickle.dump(ncp, f)
 
-    eight_schools_cp_fit = cp.sampling(data=data, iter=11000, warmup=1000,
-                                       control=dict(adapt_delta=.99), chains=1)
 
-    eight_schools_ncp_fit = ncp.sampling(data=data, iter=32000, warmup=2000, thin=3,
-                                         control=dict(adapt_delta=.95), chains=1)
+
+    try:
+        eight_schools_cp_fit = pickle.load(open('stan_pkl/eight_schools_cp_posterior_samples.pkl', 'rb'))
+    except:
+        eight_schools_cp_fit = cp.sampling(data=data, iter=11000, warmup=1000,control=dict(adapt_delta=.99), chains=1)
+        with open('stan_pkl/eight_schools_cp_posterior_samples.pkl', 'wb') as f:
+            pickle.dump(eight_schools_cp_fit, f)
+
+    try:
+        eight_schools_ncp_fit = pickle.load(open('stan_pkl/eight_schools_ncp_posterior_samples.pkl', 'rb'))
+    except:
+        eight_schools_ncp_fit = ncp.sampling(data=data, iter=32000, warmup=2000, thin=3,
+                                                 control=dict(adapt_delta=.95), chains=1)
+        with open('stan_pkl/eight_schools_ncp_posterior_samples.pkl', 'wb') as f:
+            pickle.dump(eight_schools_ncp_fit, f)
+
 
     # number of parameters and parameter names in centered model
     n_params_cp = len(eight_schools_cp_fit.constrained_param_names())
@@ -647,8 +719,6 @@ elif model == model6:
     optimiser = 'adagrad'
     n_samples= 20000
     sub_model = 'unpooled'
-
-
     try:
         unp = pickle.load(open('radon_unpooled.pkl', 'rb'))
     except:
@@ -785,5 +855,271 @@ elif model == model6:
                   np.sqrt(np.mean(np.square(a[:k].flatten() - true_mean.flatten()))))
             print('Difference between analytical cov and HMC cov-IA:',
                   np.sqrt(np.mean(np.square(cov_iters_fr_rms_ia1.flatten() - true_cov.flatten()))))
+
+elif model == model10:
+    print('lol')
+    #print(data.values())
+    #exit()
+
+    try:
+        sm = pickle.load(open('covid19_01_v2.pkl', 'rb'))
+    except:
+        sm = pystan.StanModel(model_code=code_string, model_name='covid19_model')
+        with open('covid19_01_v2.pkl', 'wb') as f:
+            pickle.dump(sm, f)
+
+
+    try:
+        model_fit = pickle.load(open('stan_pkl/covid19_posterior_samples.pkl', 'rb'))
+    except:
+        model_fit = sm.sampling(data=data.values(), iter=800,
+                                                 control=dict(adapt_delta=.96), chains=1)
+        with open('stan_pkl/covid19_posterior_samples.pkl', 'wb') as f:
+            pickle.dump(model_fit, f)
+
+    #print(model_fit)
+    #exit()
+    #sm = pystan.StanModel(model_code=code_string, model_name='covid19_model_v2')
+    #model_fit = sm.sampling(data=data.values(), iter=600, chains=1)
+    K = len(model_fit.constrained_param_names())
+    print(K)
+    param_names =  model_fit.flatnames
+    # construct matrix of samples (both original and transformed) from non-centered model
+    samples_posterior = model_fit.to_dataframe(pars=model_fit.flatnames)
+    #samples_posterior['log_sigma'] = np.log(samples_posterior['sigma'])
+    samples_posterior = samples_posterior.loc[:,param_names].values.T
+
+    print(samples_posterior.shape)
+    true_mean = np.mean(samples_posterior, axis=1)
+    true_cov = np.cov(samples_posterior)
+    true_sigma = np.sqrt(np.diag(true_cov))
+    covid19_log_density = make_stan_log_density(model_fit)
+
+    true_mean_pmz = true_mean[:K]
+    true_sigma_pmz = true_sigma[:K]
+
+    mf_gaussian = mean_field_gaussian_variational_family(K)
+    fr_gaussian = t_variational_family(K, df=10000000)
+    print(true_mean.shape)
+
+    init_param_fr = np.concatenate([np.zeros(K), np.ones(int(K*(K+1)/2))])
+    init_param_mf = np.concatenate([np.ones(K), np.ones(K)])
+    init_param_mf = np.concatenate([true_mean_pmz, np.log(true_sigma_pmz)])
+
+    klvi_fr_objective_and_grad = black_box_klvi(fr_gaussian, covid19_log_density, 100)
+    klvi_mf_objective_and_grad = black_box_klvi(mf_gaussian, covid19_log_density, 10000)
+    approx= 'mf'
+    if approx == 'mf':
+        fn_density = mf_gaussian
+        init_var_param = init_param_mf
+        obj_and_grad = klvi_mf_objective_and_grad
+    else:
+        fn_density = fr_gaussian
+        init_var_param = init_param_fr
+        obj_and_grad = klvi_fr_objective_and_grad
+
+    print(true_sigma)
+    n_samples=100000
+
+    a, b, c, d, e = \
+        adagrad_workflow_optimize(10000, obj_and_grad, init_var_param,
+                                  K, learning_rate=.0000, n_optimizers=1, tolerance=0.05, stopping_rule=1)
+    samples, smoothed_log_weights, khat = psis_correction(covid19_log_density, fn_density,
+                                                          b[-1], n_samples)
+    samples_ia, smoothed_log_weights_ia, khat_ia = psis_correction(covid19_log_density, fn_density,
+                                                                   a, n_samples)
+    print(true_mean)
+    print(b[-1][:K])
+    print('khat:', khat)
+    print('khat ia:', khat_ia)
+    cov_iters_fr_rms = fn_density.mean_and_cov(b[-1])[1]
+    cov_iters_fr_rms_ia1 = fn_density.mean_and_cov(a)[1]
+    print('Difference between analytical mean and HMC mean:',
+          np.sqrt(np.mean(np.square(b[-1][:K].flatten() - true_mean.flatten()))))
+    print('Difference between analytical cov and HMC cov:',
+          np.sqrt(np.mean(np.square(cov_iters_fr_rms.flatten() - true_cov.flatten()))))
+
+    print('Difference between analytical mean and HMC mean-IA:',
+          np.sqrt(np.mean(np.square(a[:K].flatten() - true_mean.flatten()))))
+    print('Difference between analytical cov and HMC cov-IA:',
+          np.sqrt(np.mean(np.square(cov_iters_fr_rms_ia1.flatten() - true_cov.flatten()))))
+
+
+elif model == model11:
+    print('lol')
+    #print(data.values())
+    #exit()
+
+    try:
+        sm = pickle.load(open('stan_pkl/covid19_01_v3.pkl', 'rb'))
+    except:
+        sm = pystan.StanModel(model_code=code_string, model_name='covid19_model_2')
+        with open('stan_pkl/covid19_01_v3.pkl', 'wb') as f:
+            pickle.dump(sm, f)
+
+
+    try:
+        model_fit = pickle.load(open('stan_pkl/covid19_v3_posterior_samples.pkl', 'rb'))
+    except:
+        model_fit = sm.sampling(data=data.values(), iter=800,
+                                                 control=dict(adapt_delta=.96), chains=1)
+        with open('stan_pkl/covid19_v3_posterior_samples.pkl', 'wb') as f:
+            pickle.dump(model_fit, f)
+
+    #sm = pystan.StanModel(model_code=code_string, model_name='covid19_model_v2')
+    #model_fit = sm.sampling(data=data.values(), iter=600, chains=1)
+    K = len(model_fit.constrained_param_names())
+    print(K)
+    param_names =  model_fit.flatnames
+    # construct matrix of samples (both original and transformed) from non-centered model
+    samples_posterior = model_fit.to_dataframe(pars=model_fit.flatnames)
+    #samples_posterior['log_sigma'] = np.log(samples_posterior['sigma'])
+    samples_posterior = samples_posterior.loc[:,param_names].values.T
+
+    true_mean = np.mean(samples_posterior, axis=1)
+    true_cov = np.cov(samples_posterior)
+    true_sigma = np.sqrt(np.diag(true_cov))
+    covid19_log_density = make_stan_log_density(model_fit)
+
+    true_mean_pmz = true_mean[:K]
+    true_sigma_pmz = true_sigma[:K]
+
+    mf_gaussian = mean_field_gaussian_variational_family(K)
+    fr_gaussian = t_variational_family(K, df=10000000)
+
+    init_param_fr = np.concatenate([np.zeros(K), np.ones(int(K*(K+1)/2))])
+    #init_param_mf = np.concatenate([np.zeros(K), np.ones(K)])
+    init_param_mf = np.concatenate([true_mean_pmz, np.log(true_sigma_pmz)])
+
+    klvi_fr_objective_and_grad = black_box_klvi(fr_gaussian, covid19_log_density, 100)
+    klvi_mf_objective_and_grad = black_box_klvi(mf_gaussian, covid19_log_density, 100)
+    approx= 'mf'
+    if approx == 'mf':
+        fn_density = mf_gaussian
+        init_var_param = init_param_mf
+        obj_and_grad = klvi_mf_objective_and_grad
+    else:
+        fn_density = fr_gaussian
+        init_var_param = init_param_fr
+        obj_and_grad = klvi_fr_objective_and_grad
+
+    print(true_mean)
+    print(true_sigma)
+    n_samples=100000
+
+    a, b, c, d, e = \
+        adagrad_workflow_optimize(10000, obj_and_grad, init_var_param,
+                                  K, learning_rate=.0004, n_optimizers=1, tolerance=0.05, stopping_rule=1)
+    samples, smoothed_log_weights, khat = psis_correction(covid19_log_density, fn_density,
+                                                          b[-1], n_samples)
+    samples_ia, smoothed_log_weights_ia, khat_ia = psis_correction(covid19_log_density, fn_density,
+                                                                   a, n_samples)
+    print(true_mean)
+    print(b[-1][:K])
+    print('khat:', khat)
+    print('khat ia:', khat_ia)
+    cov_iters_fr_rms = fn_density.mean_and_cov(b[-1])[1]
+    cov_iters_fr_rms_ia1 = fn_density.mean_and_cov(a)[1]
+    print('Difference between analytical mean and HMC mean:',
+          np.sqrt(np.mean(np.square(b[-1][:K].flatten() - true_mean.flatten()))))
+    print('Difference between analytical cov and HMC cov:',
+          np.sqrt(np.mean(np.square(cov_iters_fr_rms.flatten() - true_cov.flatten()))))
+
+    print('Difference between analytical mean and HMC mean-IA:',
+          np.sqrt(np.mean(np.square(a[:K].flatten() - true_mean.flatten()))))
+    print('Difference between analytical cov and HMC cov-IA:',
+          np.sqrt(np.mean(np.square(cov_iters_fr_rms_ia1.flatten() - true_cov.flatten()))))
+
+
+elif model == model12:
+    print('lol')
+    #print(data.values())
+    #exit()
+
+    try:
+        sm = pickle.load(open('stan_pkl/covid19_04_v2.pkl', 'rb'))
+    except:
+        sm = pystan.StanModel(model_code=code_string, model_name='covid19_model_3')
+        with open('stan_pkl/covid19_04_v2.pkl', 'wb') as f:
+            pickle.dump(sm, f)
+
+
+    try:
+        model_fit = pickle.load(open('stan_pkl/covid19_posterior_samples_04_01.pkl', 'rb'))
+    except:
+        model_fit = sm.sampling(data=data.values(), iter=800,
+                                                 control=dict(adapt_delta=.96), chains=1)
+        with open('stan_pkl/covid19_posterior_samples_04_01.pkl', 'wb') as f:
+            pickle.dump(model_fit, f)
+
+    #print(model_fit)
+    #exit()
+    #sm = pystan.StanModel(model_code=code_string, model_name='covid19_model_v2')
+    #model_fit = sm.sampling(data=data.values(), iter=600, chains=1)
+    K = len(model_fit.constrained_param_names())
+    print(K)
+    param_names =  model_fit.flatnames
+    # construct matrix of samples (both original and transformed) from non-centered model
+    samples_posterior = model_fit.to_dataframe(pars=model_fit.flatnames)
+    #samples_posterior['log_sigma'] = np.log(samples_posterior['sigma'])
+    samples_posterior = samples_posterior.loc[:,param_names].values.T
+
+    print(samples_posterior.shape)
+    true_mean = np.mean(samples_posterior, axis=1)
+    true_cov = np.cov(samples_posterior)
+    true_sigma = np.sqrt(np.diag(true_cov))
+    covid19_log_density = make_stan_log_density(model_fit)
+
+    true_mean_pmz = true_mean[:K]
+    true_sigma_pmz = true_sigma[:K]
+
+    mf_gaussian = mean_field_gaussian_variational_family(K)
+    fr_gaussian = t_variational_family(K, df=10000000)
+    print(true_mean.shape)
+
+    init_param_fr = np.concatenate([np.zeros(K), np.ones(int(K*(K+1)/2))])
+    init_param_mf = np.concatenate([np.ones(K), np.ones(K)])
+    init_param_mf = np.concatenate([true_mean_pmz, np.log(true_sigma_pmz)])
+
+    klvi_fr_objective_and_grad = black_box_klvi(fr_gaussian, covid19_log_density, 100)
+    klvi_mf_objective_and_grad = black_box_klvi(mf_gaussian, covid19_log_density, 10000)
+    approx= 'mf'
+    if approx == 'mf':
+        fn_density = mf_gaussian
+        init_var_param = init_param_mf
+        obj_and_grad = klvi_mf_objective_and_grad
+    else:
+        fn_density = fr_gaussian
+        init_var_param = init_param_fr
+        obj_and_grad = klvi_fr_objective_and_grad
+
+    print(true_sigma)
+    n_samples=100000
+
+    a, b, c, d, e = \
+        adagrad_workflow_optimize(10000, obj_and_grad, init_var_param,
+                                  K, learning_rate=.0000, n_optimizers=1, tolerance=0.05, stopping_rule=1)
+    samples, smoothed_log_weights, khat = psis_correction(covid19_log_density, fn_density,
+                                                          b[-1], n_samples)
+    samples_ia, smoothed_log_weights_ia, khat_ia = psis_correction(covid19_log_density, fn_density,
+                                                                   a, n_samples)
+    print(true_mean)
+    print(b[-1][:K])
+    print('khat:', khat)
+    print('khat ia:', khat_ia)
+    cov_iters_fr_rms = fn_density.mean_and_cov(b[-1])[1]
+    cov_iters_fr_rms_ia1 = fn_density.mean_and_cov(a)[1]
+    print('Difference between analytical mean and HMC mean:',
+          np.sqrt(np.mean(np.square(b[-1][:K].flatten() - true_mean.flatten()))))
+    print('Difference between analytical cov and HMC cov:',
+          np.sqrt(np.mean(np.square(cov_iters_fr_rms.flatten() - true_cov.flatten()))))
+
+    print('Difference between analytical mean and HMC mean-IA:',
+          np.sqrt(np.mean(np.square(a[:K].flatten() - true_mean.flatten()))))
+    print('Difference between analytical cov and HMC cov-IA:',
+          np.sqrt(np.mean(np.square(cov_iters_fr_rms_ia1.flatten() - true_cov.flatten()))))
+
+
+
 
 

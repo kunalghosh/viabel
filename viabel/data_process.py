@@ -38,6 +38,95 @@ class Concrete(object):
         return self.X1, self.Y1
 
 
+class Wine(object):
+
+    def __init__(self):
+        self.load_raw_data()
+
+    def load_raw_data(self):
+        data_file='wine_red_data.csv'
+        #data_file = 'wine_all_data.csv'
+        dirname, _ = os.path.split(os.path.abspath(__file__))
+        data = pd.read_csv(os.path.realpath(os.path.join("datasets/wine", data_file)), sep=" ", header=None)
+        X = data.values[:,0:-1]
+        Y = -data.values[:,-1].reshape((-1,1))
+        self.X= X
+        self.Y=Y
+
+    def get_normalised_data(self):
+        self.load_raw_data()
+
+        self.X1 = (self.X - np.mean(self.X, axis=0))/np.std(self.X, axis=0)
+        self.Y1 = (self.Y - np.mean(self.Y, axis=0))/np.std(self.Y, axis=0)
+        return self.X1, self.Y1
+
+
+class Yacht(object):
+
+    def __init__(self):
+        self.load_raw_data()
+
+    def load_raw_data(self):
+        data_file = 'yacht_data.csv'
+        dirname, _ = os.path.split(os.path.abspath(__file__))
+        data = pd.read_csv(os.path.realpath(os.path.join(dirname,"datasets/yacht", data_file)), sep=" ", header=None)
+        X = data.values[:,0:-1]
+        Y = -data.values[:,-1].reshape((-1,1))
+        self.X= X
+        self.Y=Y
+
+    def get_normalised_data(self):
+        self.load_raw_data()
+
+        self.X1 = (self.X - np.mean(self.X, axis=0))/np.std(self.X, axis=0)
+        self.Y1 = (self.Y - np.mean(self.Y, axis=0))/np.std(self.Y, axis=0)
+        return self.X1, self.Y1
+
+
+class Boston(object):
+    def __init__(self):
+        self.load_raw_data()
+
+    def load_raw_data(self):
+        data_file = 'boston.txt'
+        dirname, _ = os.path.split(os.path.abspath(__file__))
+        data = pd.read_csv(os.path.realpath(os.path.join(dirname,"boston", data_file)), sep=" ", header=None)
+        data = np.loadtxt(os.path.realpath(os.path.join(dirname, "datasets/boston/", data_file)))
+        X = data.values[:,0:-1]
+        Y = -data.values[:,-1].reshape((-1,1))
+        self.X= X
+        self.Y=Y
+
+    def get_normalised_data(self):
+        self.load_raw_data()
+
+        self.X1 = (self.X - np.mean(self.X, axis=0))/np.std(self.X, axis=0)
+        self.Y1 = (self.Y - np.mean(self.Y, axis=0))/np.std(self.Y, axis=0)
+        return self.X1, self.Y1
+
+
+class Boston(object):
+    def __init__(self):
+        self.load_raw_data()
+
+    def load_raw_data(self):
+        data_file = 'boston.txt'
+        dirname, _ = os.path.split(os.path.abspath(__file__))
+        #data = pd.read_csv(os.path.realpath(os.path.join("datasets/boston", data_file)), sep=" ", header=None)
+        data= np.loadtxt(os.path.realpath(os.path.join("datasets/boston/", data_file)))
+        X = data[:,0:-1]
+        Y = data[:,-1].reshape((-1,1))
+        self.X= X
+        self.Y=Y
+
+    def get_normalised_data(self):
+        self.load_raw_data()
+
+        self.X1 = (self.X - np.mean(self.X, axis=0))/np.std(self.X, axis=0)
+        self.Y1 = (self.Y - np.mean(self.Y, axis=0))/np.std(self.Y, axis=0)
+        return self.X1, self.Y1
+
+
 
 CACHE_DIR = os.path.join(os.sep, 'tmp', 'radon')
 
