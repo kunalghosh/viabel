@@ -494,52 +494,6 @@ def black_box_klvi_tempered2(var_family, logdensity, S_init=400, c=1.5, Mstar = 
 
 
 
-def black_box_exclusive_klvi(var_family, logdensity, S_init=400, c=1.5, Mstar = 10, kstar = 8., S_max=5000,
-                            S_min=200):
-
-    def compute_log_weights(var_param, n_samples, epsilon, seed):
-        samples = var_family.sample(var_param, n_samples, seed)
-        log_weights = logdensity(samples)*epsilon - var_family.logdensity(samples, var_param)
-        return log_weights
-
-
-    def compute_objective_mean(var_param, n_samples, epsilon, seed):
-        log_weights = compute_log_weights(var_param, n_samples, epsilon, seed)
-        return -np.mean(log_weights)
-
-
-    def compute_ESS(log_weights):
-        log_norm = np.max(log_weights)
-        scaled_values = np.exp(log_weights - log_norm)
-        Neff1 = np.sum(scaled_values)**2 / np.sum(scaled_values**2)
-        return Neff1
-
-    log_weights_vjp = vector_jacobian_product(compute_objective_mean)
-
-    def objective_grad_and_log_norm(var_param, S_iter=0, epsilon=0, iter_count=0):
-        """Provides a stochastic estimate of the variational lower bound."""
-        if not S_iter:
-            S = S_init
-        else:
-            S = S_iter
-
-        if S < S_min:
-            S = S_min
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 def black_box_chivi(alpha, var_family, logdensity, n_samples):
     def compute_log_weights(var_param, seed):
@@ -997,7 +951,7 @@ def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
                         eps = adaptive_tempering(eps, Seff, Seff_prev)
                         eps = eps + 0.001
                         log_norm = 0
-                        if paretok > 0.01:
+                        if paretok > 0.05:
                             pareto_k_list.append(paretok)
                             neff_list.append(Seff)
 
@@ -1113,22 +1067,22 @@ def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
         khat_iterates.append(khat_i)
 
 
+
     for i in range(pmz_size):
         khat_i2 = compute_khat_iterates(variational_param_history_chains, start_stats, i, increasing=False)
         khat_iterates2.append(khat_i2)
 
 
-    #khat_objective,_ = gpdfit(np.array(value_history))
-    #khat_iterates.append(khat_objective)
+    khat_objective,_ = gpdfit(np.array(value_history))
+    khat_iterates.append(khat_objective)
     value_history_neg = [-a for a in value_history]
 
-    #khat_objective2, _ = gpdfit(np.array(value_history_neg))
-    #khat_iterates2.append(khat_objective2)
+    khat_objective2, _ = gpdfit(np.array(value_history_neg))
+    khat_iterates2.append(khat_objective2)
 
     rhot_array = np.stack(Rhot, axis=0)
     khat_iterates_array = np.stack(khat_iterates, axis=0)
     khat_iterates_array2 = np.stack(khat_iterates2, axis=0)
-    khat_combined = np.maximum(khat_iterates, khat_iterates2)
 
 
     if has_log_norm == 2 or has_log_norm == 3 or has_log_norm == 4:
@@ -1176,7 +1130,7 @@ def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
 
     optimisation_log['khat_iterates'] = khat_iterates_array
     optimisation_log['khat_iterates2'] = khat_iterates_array2
-    optimisation_log['khat_iterates_comb'] = khat_combined
+
 
     return (variational_param, variational_param_history_chains, averaged_variational_mean_list,
             averaged_variational_sigmas_list,
@@ -1188,8 +1142,7 @@ def rmsprop_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param,K,
 def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param, K,
                         has_log_norm=False, window=500,  learning_rate=.01,
                         epsilon=.000001, rhat_window=500, averaging=True, n_optimisers=1,
-                               r_mean_threshold=1.15, r_sigma_threshold=1.20, tail_avg_iters=2000,
-                               learning_rate_end=None):
+                               r_mean_threshold=1.15, r_sigma_threshold=1.20, learning_rate_end=None):
     local_grad_history = []
     local_log_norm_history = []
     value_history = []
@@ -1214,6 +1167,8 @@ def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param, K,
     beta2=0.999
     pareto_k_list = []
     neff_list = []
+    r_mean_threshold= 1.10
+    r_sigma_threshold = 1.20
 
     for o in range(n_optimisers):
         variational_param_history = []
@@ -1302,6 +1257,7 @@ def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param, K,
     rhat_mean_windows, rhat_sigma_windows = rhats[:,:K], rhats[:,K:]
     rhat_mean_halfway, rhat_sigma_halfway = rhats_halfway[:, :K], rhats_halfway[:, K:]
 
+    tail_avg_iters =500
     start_swa_m_iters = n_iters - tail_avg_iters
     start_swa_s_iters = n_iters - tail_avg_iters
     optimisation_log = dict()
@@ -1353,6 +1309,8 @@ def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param, K,
         optimisation_log['Seff'] = neff_list
 
 
+    start_swa_m_iters = n_iters - 2000
+    start_swa_s_iters = n_iters - 2000
     for ee, w in enumerate(rhat_mean_windows):
         if ee == (rhat_mean_windows.shape[0] - 1):
             continue
@@ -1412,8 +1370,6 @@ def adam_IA_optimize_with_rhat(n_iters, objective_and_grad, init_param, K,
     optimisation_log['khat_iterates'] = khat_iterates_array
     optimisation_log['khat_iterates2'] = khat_iterates_array2
     optimisation_log['khat_iterates_comb'] = khat_combined
-
-
     return (variational_param, variational_param_history_chains, averaged_variational_mean_list,
             averaged_variational_sigmas_list,
             np.array(value_history), np.array(log_norm_history), optimisation_log)

@@ -3,7 +3,6 @@
 import autograd.numpy as np
 from autograd.extend import primitive
 
-
 from psis import psislw
 
 def compute_R_hat(chains, warmup=500):
@@ -127,10 +126,10 @@ def flat_to_triang(flat_mat):
             count = count+1
     return ret
 
-
 def flat_to_triang_vjp(g):
     assert g.shape[0] == g.shape[1]
     return _vectorize_ld_matrix(g)
+
 
 
 @primitive
