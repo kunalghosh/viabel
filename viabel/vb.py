@@ -1,6 +1,6 @@
 from collections import namedtuple
 
-from autograd import value_and_grad, vector_jacobian_product
+from autograd import value_and_grad, vector_jacobian_product, jacobian, elementwise_grad
 from autograd.extend import primitive, defvjp
 
 import autograd.numpy as np
@@ -48,6 +48,7 @@ VariationalFamily = namedtuple('VariationalFamily',
                                 'pth_moment', 'var_param_dim'])
 
 
+
 def mean_field_gaussian_variational_family(dim):
     rs = npr.RandomState(0)
     def unpack_params(var_param):
@@ -83,6 +84,8 @@ def mean_field_gaussian_variational_family(dim):
 
     return VariationalFamily(sample, entropy, logdensity,
                              mean_and_cov, pth_moment, 2*dim)
+
+
 
 
 def full_rank_gaussian_variational_family(dim):
@@ -246,6 +249,81 @@ def black_box_klvi(var_family, logdensity, n_samples):
     objective_and_grad = value_and_grad(variational_objective)
 
     return objective_and_grad
+
+# This function also computes the gradients per sample for KLVI
+def black_box_klvi_all_grads(var_family, logdensity, n_samples, gradient_type='rp'):
+    def compute_log_weights(var_param, seed):
+        samples = var_family.sample(var_param, n_samples, seed)
+        log_weights = logdensity(samples) - var_family.logdensity(samples, var_param)
+        return log_weights
+
+    def compute_objective_mean(var_param, seed):
+        log_weights = compute_log_weights(var_param, seed)
+        return -np.mean(log_weights)
+
+    def compute_objective_evals(var_param, seed):
+        log_weights = compute_log_weights(var_param, seed)
+        return -log_weights
+
+
+    log_weights_vjp = vector_jacobian_product(compute_objective_mean)
+    sample_grads= jacobian(compute_objective_evals)
+
+    def objective_grad_and_log_norm(var_param):
+        """Provides a stochastic estimate of the variational lower bound."""
+        seed = npr.randint(2 ** 32)
+        samples = var_family.sample(var_param, n_samples, seed)
+        log_weights = logdensity(samples) - var_family.logdensity(samples, var_param)
+        obj_value = compute_objective_mean(var_param, seed)
+        obj_grad = log_weights_vjp(var_param, seed, obj_value)
+        #particle_grads = sample_grads(var_param, seed, log_weights)
+        particle_grads = jacobian(compute_objective_evals)(var_param, seed)
+        print(particle_grads.shape)
+        _, paretok = psislw(log_weights)
+        log_norm = np.max(log_weights)
+        scaled_values = np.exp(log_weights - log_norm)
+        Neff = np.sum(scaled_values)**2 / np.sum(scaled_values**2)
+        return obj_value, obj_grad, particle_grads
+    return objective_grad_and_log_norm
+
+
+# This function also computes the gradients per sample for CHIVI
+def black_box_chivi_all_grads(alpha, var_family, logdensity, n_samples):
+    def compute_log_weights(var_param, seed):
+        samples = var_family.sample(var_param, n_samples, seed)
+        log_weights = logdensity(samples) - var_family.logdensity(samples, var_param)
+        return log_weights
+
+    def compute_objective_mean(var_param, seed):
+        log_weights = compute_log_weights(var_param, seed)
+        log_norm = np.max(log_weights)
+        particle_weights = compute_objective_evals(var_param, seed)
+        return np.log(np.mean(particle_weights))/alpha + log_norm
+
+    def compute_objective_evals(var_param, seed):
+        log_weights = compute_log_weights(var_param, seed)
+        log_norm = np.max(log_weights)
+        scaled_values = np.exp(log_weights - log_norm)**alpha
+        return scaled_values
+
+
+    log_weights_vjp = vector_jacobian_product(compute_objective_mean)
+    sample_grads= jacobian(compute_objective_evals)
+    def objective_grad_and_log_norm(var_param):
+        """Provides a stochastic estimate of the variational lower bound."""
+        seed = npr.randint(2 ** 32)
+        samples = var_family.sample(var_param, n_samples, seed)
+        log_weights = logdensity(samples) - var_family.logdensity(samples, var_param)
+        particle_grads = jacobian(compute_objective_evals)(var_param, seed)
+        print(particle_grads.shape)
+        log_norm = np.max(log_weights)
+        scaled_values = np.exp(log_weights - log_norm)**alpha
+        paretok,_ = gpdfit(scaled_values)
+        #print(paretok)
+        obj_value = np.log(np.mean(scaled_values))/alpha + log_norm
+        obj_grad = alpha*log_weights_vjp(var_param, seed, obj_value)
+        return obj_value, obj_grad, particle_grads
+    return objective_grad_and_log_norm
 
 
 
@@ -489,7 +567,6 @@ def black_box_klvi_tempered2(var_family, logdensity, S_init=400, c=1.5, Mstar = 
 
         return (obj_value, obj_grad, S , epsilon, paretok, Neff1)
 
-
     return objective_grad_and_log_norm
 
 
@@ -549,6 +626,172 @@ def black_box_chivi2(alpha, var_family, logdensity, n_samples):
     return objective_grad_and_log_norm
 
 
+def markov_score_climbing_cis(var_family, logdensity, n_samples, k):
+    '''minimizes the inclusive KL  with the MSC-CIS algorithm'''
+    def compute_log_weights(var_param, seed):
+        """Provides a stochastic estimate of the variational lower bound."""
+        samples = var_family.sample(var_param, n_samples, seed)
+        log_weights = logdensity(samples) - var_family.logdensity(samples, var_param)
+        return log_weights
+
+
+    def log_Normal_density(x, qmu, qsigma):
+        return -0.5*np.log(2*math.pi*np.prod(qsigma)) -0.5*np.dot((x-qmu), )
+
+
+    def dlogq_dmu(x, qmu, qlogsigma):
+        qsigma = np.exp(qlogsigma)
+        grad=  (x.flatten()-qmu.flatten())/qsigma.flatten()**2
+        return -grad
+
+    def dlogq_dmu_vec(x, qmu, qlogsigma):
+        qsigma = np.exp(qlogsigma)
+        grad=  (x-qmu.reshape(-1, qmu.size))/qsigma.reshape(-1, qsigma.size)
+        return -grad
+
+    def dlogq_dsigma_vec(x, qmu, qlogsigma):
+        qsigma = np.exp(qlogsigma)
+        qsigma = qsigma.reshape(-1, qsigma.size)
+        qmu = qmu.reshape(-1, qmu.size)
+        grad= -(((qmu + qsigma - x) *
+                  (-qmu + qsigma + x)) / qsigma** 2)
+        return -grad
+
+
+    def dlogq_dsigma(x, qmu, qlogsigma):
+        qsigma=np.exp(qlogsigma)
+        e = x.flatten()-qmu.flatten()
+        s_4 = 1.0/qsigma**4
+        grad= -(((qmu.flatten() + qsigma.flatten() - x.flatten()) *
+                  (-qmu.flatten() + qsigma.flatten() + x.flatten())) / qsigma.flatten() ** 2)
+        #return -0.5/qsigma* + 0.5*s_4*e**2
+        return -grad
+
+    def logdensity_q(var_param):
+        return partial(var_family.logdensity, var_param=var_param)
+
+    def logdensity_q_grad(var_param):
+        score_gradient = elementwise_grad(logdensity_q)
+        return score_gradient
+
+
+    def objective_grad_and_log_norm(var_param, prev_zk):
+        seed = npr.randint(2**32)
+        #log_weights = compute_log_weights(var_param, seed)
+        samples = var_family.sample(var_param, n_samples, seed)
+        samples_all = np.concatenate((samples, prev_zk))
+        log_weights = logdensity(samples) - var_family.logdensity(samples, var_param)
+        weight_zk = logdensity(prev_zk) - var_family.logdensity(prev_zk, var_param)
+        print(weight_zk.shape)
+        log_weights_all = np.concatenate((log_weights, weight_zk))
+        weights_all = np.exp(log_weights_all)
+        weights_snis = weights_all /np.sum(weights_all)
+        print(np.sum(weights_all))
+        print(weights_snis)
+        idx_sample = np.random.choice(n_samples +1, 1, p=weights_snis.flatten())
+        weight_sample = samples_all[idx_sample]
+        obj_grad = logdensity_q_grad(var_param)
+        obj_grad = np.concatenate([dlogq_dmu(weight_sample, var_param[:k], var_param[k:]),
+                    dlogq_dsigma(weight_sample, var_param[:k], var_param[k:])])
+
+
+        obj_val = np.mean(weights_all*log_weights_all)
+
+        return (obj_val, obj_grad, weight_sample)
+
+
+    def objective_grad_and_log_norm_rb(var_param, prev_zk):
+        seed = npr.randint(2**32)
+        #log_weights = compute_log_weights(var_param, seed)
+        samples = var_family.sample(var_param, n_samples, seed)
+        samples_all = np.concatenate((samples, prev_zk))
+        log_weights = logdensity(samples) - var_family.logdensity(samples, var_param)
+        weight_zk = logdensity(prev_zk) - var_family.logdensity(prev_zk, var_param)
+        print(weight_zk.shape)
+        log_weights_all = np.concatenate((log_weights, weight_zk))
+        weights_all = np.exp(log_weights_all)
+        weights_snis = weights_all /np.sum(weights_all)
+        print(weights_snis)
+        idx_sample = np.random.choice(n_samples +1, 1, p=weights_snis.flatten())
+        weight_sample = samples_all[idx_sample]
+        obj_grad = logdensity_q_grad(var_param)
+        var_grad = np.concatenate([dlogq_dmu_vec(samples_all, var_param[:k], var_param[k:]),
+                    dlogq_dsigma_vec(samples_all, var_param[:k], var_param[k:])], axis=1)
+
+        obj_val = np.mean(weights_all*log_weights_all)
+        obj_grad= weights_snis @ var_grad
+        return (obj_val, obj_grad, weight_sample)
+
+    #return objective_grad_and_log_norm_rb
+    return objective_grad_and_log_norm
+
+
+def distilled_importance_sampling(var_family, logdensity, n_samples, k, n, omega):
+    '''minimizes the inclusive KL  with the DIS algorithm'''
+    def compute_log_weights(var_param, seed):
+        """Provides a stochastic estimate of the variational lower bound."""
+        samples = var_family.sample(var_param, n_samples, seed)
+        log_weights = logdensity(samples) - var_family.logdensity(samples, var_param)
+        return log_weights
+
+
+    def dlogq_dmu_vec(x, qmu, qlogsigma):
+        qsigma = np.exp(qlogsigma)
+        grad=  (x-qmu.reshape(-1, qmu.size))/qsigma.reshape(-1, qsigma.size)
+        return -grad
+
+
+    def dlogq_dsigma_vec(x, qmu, qlogsigma):
+        qsigma = np.exp(qlogsigma)
+        qsigma = qsigma.reshape(-1, qsigma.size)
+        qmu = qmu.reshape(-1, qmu.size)
+        grad= -(((qmu + qsigma - x) *
+                  (-qmu + qsigma + x)) / qsigma** 2)
+        return -grad
+
+    def compute_tis(weights, omega):
+        idx = weights > omega
+        weights[idx] =omega
+        return weights
+
+    def compute_tis2(weights, omega):
+        weights_snis = weights/np.sum(weights)
+        idx = weights_snis > omega
+        weights[idx] =omega
+        return weights
+
+    def resample_weights(samples, weights):
+        n_samples =samples.shape[0]
+        weights_snis = weights/np.sum(weights)
+        idx_sample = np.random.choice(n_samples, n, p=weights_snis.flatten())
+        samples_ris = samples[idx_sample]
+        weights_ris = weights[idx_sample]
+        return weights_ris, samples_ris
+
+    def compute_Neff():
+        pass
+
+
+    def objective_grad_and_log_norm(var_param, epsilon):
+        seed = npr.randint(2**32)
+        #log_weights = compute_log_weights(var_param, seed)
+        samples = var_family.sample(var_param, n_samples, seed)
+        log_weights = logdensity(samples)*epsilon - var_family.logdensity(samples, var_param)
+        weights_is = np.exp(log_weights)
+        weights_snis = weights_is /np.sum(weights_is)
+        weights_tis = compute_tis(weights_is, omega)
+
+        weights_ris, samples_ris = resample_weights(samples, weights_tis)
+        log_weights_ris= np.log(weights_ris)
+        obj_grad = np.concatenate([dlogq_dmu_vec(samples_ris, var_param[:k], var_param[k:]),
+                    dlogq_dsigma_vec(samples_ris, var_param[:k], var_param[k:])])
+        S = np.sum(weights_tis)
+        obj_grad = obj_grad*S/(n_samples*n)
+        obj_val = np.mean(weights_ris*log_weights_ris)
+        return (obj_val, obj_grad)
+    return  objective_grad_and_log_norm
+
+
 
 def black_box_chivi_neff(alpha, var_family, logdensity, n_samples):
     def compute_log_weights(var_param, seed):
@@ -558,7 +801,6 @@ def black_box_chivi_neff(alpha, var_family, logdensity, n_samples):
         return log_weights
 
     log_weights_vjp = vector_jacobian_product(compute_log_weights)
-
     def objective_grad_and_log_norm(var_param):
         seed = npr.randint(2**32)
         log_weights = compute_log_weights(var_param, seed)
@@ -752,6 +994,17 @@ def make_stan_log_density(fitobj):
     return log_density
 
 
+def make_stan_log_density_grad(fitobj):
+    @primitive
+    def grad_log_density(x):
+        return _vectorize_if_needed(fitobj.grad_log_prob,x)
+    def grad_log_density_vjp(ans, x):
+        return lambda g: _ensure_2d(g) * _vectorize_if_needed(fitobj.grad_log_prob, x)
+    defvjp(grad_log_density, grad_log_density_vjp)
+    return grad_log_density
+
+
+
 def learning_rate_schedule(n_iters, learning_rate, learning_rate_end):
     if learning_rate <= 0:
         raise ValueError('learning rate must be positive')
@@ -776,7 +1029,7 @@ def learning_rate_schedule(n_iters, learning_rate, learning_rate_end):
 
 def adagrad_optimize(n_iters, objective_and_grad, init_param,
                      has_log_norm=False, window=10,learning_rate=.01,
-                     epsilon=.1, learning_rate_end=None):
+                     epsilon=.1, learning_rate_end=None, k=15):
     local_grad_history = []
     local_log_norm_history = []
     value_history = []
@@ -785,7 +1038,7 @@ def adagrad_optimize(n_iters, objective_and_grad, init_param,
     variational_param_history = []
     pareto_k_list = []
     neff_list = []
-
+    prev_z = np.zeros((1,k))
 
     with tqdm.trange(n_iters) as progress:
         try:
@@ -800,6 +1053,11 @@ def adagrad_optimize(n_iters, objective_and_grad, init_param,
                     if paretok > 0.25:
                         pareto_k_list.append(paretok)
                         neff_list.append(neff)
+
+                elif has_log_norm == 3:
+                    print(prev_z)
+                    obj_val, obj_grad, prev_z = objective_and_grad(variational_param, prev_z)
+                    log_norm = 0.
                 else:
                     obj_val, obj_grad = objective_and_grad(variational_param)
                     log_norm= 0.
@@ -814,7 +1072,8 @@ def adagrad_optimize(n_iters, objective_and_grad, init_param,
                 grad_scale = np.exp(np.min(local_log_norm_history) - np.array(local_log_norm_history))
                 scaled_grads = grad_scale[:,np.newaxis]*np.array(local_grad_history)
                 accum_sum = np.sum(scaled_grads**2, axis=0)
-                variational_param = variational_param - curr_learning_rate*obj_grad/np.sqrt(epsilon + accum_sum)
+                variational_param = variational_param - curr_learning_rate*obj_grad/np.sqrt(
+                        epsilon + accum_sum)
                 if i >= 3*n_iters // 4:
                     variational_param_history.append(variational_param.copy())
                 if i % 10 == 0:
