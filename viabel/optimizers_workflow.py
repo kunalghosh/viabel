@@ -22,9 +22,10 @@ from  .optimization_diagnostics import autocorrelation, monte_carlo_se, monte_ca
 from .functions import flat_to_triang, triang_to_flat
 
 __all__ = [
-    'adagrad_optimize',
-    'rmsprop_IA_optimize_with_rhat',
-    'adam_IA_optimize_with_rhat'
+    'adagrad_workflow_optimize',
+    'rmsprop_workflow_optimize',
+    'adam_workflow_optimize',
+    'rmsprop_workflow_optimize_rank_rhat'
 ]
 
 
@@ -169,21 +170,13 @@ def adagrad_workflow_optimize(n_iters, objective_and_grad, init_param,K,
 
 
             variational_param_history_array = np.array(variational_param_history)
-            #variational_param_history_list.append(variational_param_history_array)
-            #variational_param_history_chains = np.stack(variational_param_history_list, axis=0)
-            #variational_param_history_list.pop(0)
-
             if stopping_rule ==2 and i % eval_elbo ==0 and i  > 1000 and sto_process_convergence==False:
                 variational_param_history_list.append(variational_param_history_array)
                 variational_param_history_chains = np.stack(variational_param_history_list, axis=0)
                 variational_param_history_list.pop(0)
                 #rhats_halfway = compute_R_hat_halfway(variational_param_history_chains, interval=100, start=200)
                 rhats_halfway_last = compute_R_hat_halfway_light(variational_param_history_chains, interval=i, start=600)
-                # rhat_mean_windows, rhat_sigma_windows = rhats[:,:K], rhats[:,K:]
-                #rhat_mean_halfway, rhat_sigma_halfway = rhats_halfway[:, :K], rhats_halfway[:, K:]
                 rhat_mean_halfway, rhat_sigma_halfway = rhats_halfway_last[:K], rhats_halfway_last[K:]
-                #print(rhat_mean_halfway)
-                #print(rhat_sigma_halfway)
 
                 if (rhat_mean_halfway < 1.30).all() and sto_process_mean_conv == False:
                     start_swa_m_iters = i
@@ -441,7 +434,6 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
         Neff = np.ones((pmz_size,1))
         S=100
 
-        sample_grad_matrix= np.zeros((n_iters, 2*K, S))
         with tqdm.trange(n_iters) as progress:
             try:
                 schedule = learning_rate_schedule(n_iters, learning_rate, learning_rate_end)
@@ -454,22 +446,6 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
                     prev_variational_param = variational_param
                     if has_log_norm == 1:
                         obj_val, obj_grad, log_norm = objective_and_grad(variational_param)
-                    elif has_log_norm ==2:
-                        obj_val, obj_grad, paretok ,neff = objective_and_grad(variational_param)
-                        log_norm=0.
-                        if paretok > 0.25:
-                            pareto_k_list.append(paretok)
-                            neff_list.append(neff)
-                    elif has_log_norm == 3:
-                        obj_val, obj_grad, S, paretok, neff = objective_and_grad(variational_param, S)
-                        log_norm=0.
-                        if paretok > 0.06:
-                            pareto_k_list.append(paretok)
-                            neff_list.append(neff[0])
-                    elif has_log_norm == 4:
-                        obj_val, obj_grad, particle_grads = objective_and_grad(variational_param)
-                        log_norm = 0.
-                        sample_grad_matrix[i, :] = particle_grads.T
                         #print(particle_grads.shape)
 
                     else:
@@ -484,18 +460,15 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
                         elbo_diff_rel_avg = np.nanmean(elbo_diff_rel_list)
                         elbo_diff_rel_med2 = np.nanmedian(elbo_diff_rel_list[-last_i:])
                         elbo_diff_rel_avg2 = np.nanmean(elbo_diff_rel_list[-last_i:])
-                        print(elbo_diff_rel_med)
-                        print(elbo_diff_rel_avg)
+                        #print(elbo_diff_rel_med)
+                        #print(elbo_diff_rel_avg)
 
                     prev_elbo = obj_val
                     if i%100 == 0 and i>99:
                         prev_elbo_100 = value_history[-100]
                     start_stats= 500
-                    mcse_se_combined_list = np.zeros((pmz_size, 1))
                     if stopping_rule == 2 and i > 1000 and i % eval_elbo == 0:
                         mcse_se_combined_list = montecarlo_se(np.array(variational_param_history)[None, :], 0)
-                        print('monte carlo se!')
-                        print(np.min(mcse_all[:, -1]))
                         mcse_all = np.hstack((mcse_all, mcse_se_combined_list[:, None]))
                     value_history.append(obj_val)
                     local_grad_history.append(obj_grad)
@@ -559,8 +532,8 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
 
                     # make all the final checks
                     if stopping_rule == 2  and sto_process_convergence == True and i > 1500 and \
-                            t % eval_elbo == 0 and (np.nanmedian(mcse_all[:, -1]) <= 0.02) \
-                            and j > 300 and (np.nanquantile(Neff[:K], 0.50) > 30) and (np.nanquantile(Neff[K:], 0.50) > 4 ):
+                            t % eval_elbo == 0 and (np.nanmedian(mcse_all[:, -1]) <= 0.10) \
+                            and j > 300 and (np.nanquantile(Neff[:K], 0.50) > 20) and (np.nanquantile(Neff[K:], 0.50) > 4 ):
                         print('stopping reliably ...')
                         stop = True
                         break
@@ -571,26 +544,19 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
                         variational_param_history_list.append(variational_param_history_array)
                         variational_param_history_chains = np.stack(variational_param_history_list, axis=0)
                         variational_param_history_list.pop(0)
-                        #print(variational_param_history_chains.shape)
-                        # rhats_halfway = compute_R_hat_halfway(variational_param_history_chains, interval=100, start=200)
                         rhats_halfway_last = compute_R_hat_halfway_light(variational_param_history_chains, interval=i,
                                                                          start=400)
-                        #print(rhats_halfway_last.shape)
-                        # rhat_mean_windows, rhat_sigma_windows = rhats[:,:K], rhats[:,K:]
-                        # rhat_mean_halfway, rhat_sigma_halfway = rhats_halfway[:, :K], rhats_halfway[:, K:]
                         rhat_mean_halfway, rhat_sigma_halfway = rhats_halfway_last[:K], rhats_halfway_last[K:]
-                        # start_swa_m_iters = N_it - tail_avg_iters
-                        # start_swa_s_iters = start_swa_m_iters
 
-                        if (rhat_mean_halfway < 1.30).all() and sto_process_mean_conv == False:
+                        if (rhat_mean_halfway < r_mean_threshold).all() and sto_process_mean_conv == False:
                             start_swa_m_iters = i
-                            print('mean converged ... ')
+                            print('All mean R-hat converged ... ')
                             sto_process_mean_conv = True
                             start_stats = start_swa_m_iters
 
-                        if (rhat_sigma_halfway < 1.30).all() and sto_process_sigma_conv == False:
+                        if (rhat_sigma_halfway < r_sigma_threshold).all() and sto_process_sigma_conv == False:
                             start_swa_s_iters = i
-                            print('sigmas converged ....')
+                            print('All sigmas R-hat converged ....')
                             sto_process_sigma_conv = True
                             start_stats = start_swa_s_iters
 
@@ -598,27 +564,22 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
                         sto_process_convergence = True
                         start_stats = np.maximum(start_swa_m_iters, start_swa_s_iters)
                         optimisation_log['start_stats'] = start_stats.copy()
-                        # print(start_stats)
-                        # print('convergence ...')
-                        # exit()
 
                     if sto_process_convergence:
                         variational_param_post_conv_history.append(variational_param)
 
+                    # COnvergence according to Rhat has taken place, now we compute these statistics ....
                     if sto_process_convergence and j > 100 and t % eval_elbo == 0:
                         variational_param_post_conv_history_array = np.array(variational_param_post_conv_history)
                         variational_param_post_conv_history_list.append(variational_param_post_conv_history_array)
                         variational_param_post_conv_history_chains = np.stack(variational_param_post_conv_history_list,
                                                                               axis=0)
                         variational_param_post_conv_history_list.pop(0)
-                        print(sto_process_convergence)
-                        print(start_stats)
                         pmz_size = variational_param_post_conv_history_chains.shape[2]
                         Neff = np.zeros(pmz_size)
                         Rhot = []
                         khat_iterates = []
                         khat_iterates2 = []
-                        # compute khat for iterates
                         for z in range(pmz_size):
                             neff, rho_t_sum, autocov, rho_t = autocorrelation(
                                 variational_param_post_conv_history_chains, 0, z)
@@ -634,8 +595,6 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
                             khat_iterates2.append(khat_i2)
 
                         rhot_array = np.stack(Rhot, axis=0)
-                        # khat_iterates_array = np.stack(khat_iterates, axis=0)
-                        # khat_iterates_array2 = np.stack(khat_iterates2, axis=0)
                         khat_combined = np.maximum(khat_iterates, khat_iterates2)
 
             except (KeyboardInterrupt, StopIteration) as e:  # pragma: no cover
@@ -649,30 +608,20 @@ def rmsprop_workflow_optimize(n_iters, objective_and_grad, init_param, K,
     if sto_process_convergence:
         optimisation_log['start_avg_mean_iters'] = start_swa_m_iters
         optimisation_log['start_avg_sigma_iters'] = start_swa_s_iters
-        #optimisation_log['r_hat_mean'] = rhat_mean_windows
-        #optimisation_log['r_hat_sigma'] = rhat_sigma_windows
 
         optimisation_log['r_hat_mean_halfway'] = rhat_mean_halfway
         optimisation_log['r_hat_sigma_halfway'] = rhat_sigma_halfway
         optimisation_log['neff'] = Neff
         optimisation_log['autocov'] = autocov
         optimisation_log['rhot'] = rhot_array
-        #optimisation_log['start_stats'] = start_stats
-        #optimisation_log['mcmc_se2'] = mcmc_se2_array
+        optimisation_log['start_stats'] = start_stats
         optimisation_log['khat_iterates_comb'] = khat_combined
 
-    #if stopping_rule == 1:
-    #    start_stats = i - tail_avg_iters
-    #    print(start_stats)
 
     optimisation_log['final_iter'] = i
-
-    optimisation_log['sample_grad_matrix'] = sample_grad_matrix
     if stopping_rule ==1:
         variational_param_history_list.append(variational_param_history_array)
         variational_param_history_chains = np.stack(variational_param_history_list, axis=0)
-        #variational_param_history = np.stack(variational_param_history)
-        #variational_param_history_chains = np.vstack(variational_param_history_chains, variational_param_post_conv_history)
         smoothed_opt_param = np.mean(variational_param_history_array[start_stats:,:], axis=0)
         averaged_variational_mean_list.append(smoothed_opt_param[:K])
         averaged_variational_sigmas_list.append(smoothed_opt_param[K:])
