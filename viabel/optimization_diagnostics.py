@@ -1,9 +1,121 @@
 
 import autograd.numpy as np
+import arviz
 from autograd.extend import primitive
 
-from .functions import compute_R_hat, compute_R_hat_halfway
+from psis import psislw
 
+def compute_R_hat(chains, warmup=500):
+    '''
+    computes split-rhat given in BDA3 where chains is a 3 D array: (N_realisations , N_iters , Ndims)
+    :param chains:
+    :param warmup: number of samples thrown away- burnin
+    :return:
+    '''
+    #first axis is relaisations, second is iters
+    # N_realisations X N_iters X Ndims
+    jitter = 1e-8
+    chains = chains[:, warmup:, :]
+    n_iters = chains.shape[1]
+    n_chains = chains.shape[0]
+    K = chains.shape[2]
+    if n_iters%2 == 1:
+        n_iters = int(n_iters - 1)
+        chains = chains[:,:n_iters-1,:]
+
+    n_iters = n_iters // 2
+    psi = np.reshape(chains, (n_chains * 2, n_iters, K))
+    n_chains2 = n_chains*2
+    psi_dot_j = np.mean(psi, axis=1)
+    psi_dot_dot = np.mean(psi_dot_j, axis=0)
+    s_j_2 = np.sum((psi - np.expand_dims(psi_dot_j, axis=1)) ** 2, axis=1) / (n_iters - 1)
+    B = n_iters * np.sum((psi_dot_j - psi_dot_dot) ** 2, axis=0) / (n_chains2 - 1)
+    W = np.nanmean(s_j_2, axis=0)
+    W = W + jitter
+    var_hat = (n_iters - 1) / n_iters + (B / (n_iters*W))
+    R_hat = np.sqrt(var_hat)
+    return var_hat, R_hat
+
+
+def compute_R_hat_adaptive_numpy(chains, window_size=100):
+    # numpy function for computing R-hat , maybe inefficient but does the job ...
+    n_chains, n_iters, K = chains.shape
+    n_windows = n_iters//window_size
+    chains_reshaped = np.transpose(np.reshape(chains, [n_chains, n_windows,
+                                                       window_size, -1]),
+                                     [1, 0, 2, 3])
+    r_hats = np.array([compute_R_hat(chains_reshaped[i, :], warmup=0)[1] for i in range(chains_reshaped.shape[0])])
+    return r_hats
+
+
+def compute_R_hat_halfway(chains, interval=100, start=1000):
+    '''
+    computes the split rhat using window of latest 50% samples
+    :param chains:
+    :param interval:
+    :param start:
+    :return:
+    '''
+    n_chains, n_iters, K= chains.shape
+    n_subchains = n_iters //interval
+    r_hats_halfway = list()
+
+    for i in range(n_subchains):
+        sub_chains = chains[:, :start+(i+1)*interval,:]
+        n_sub_chains, n_sub_iters, K = sub_chains.shape
+        r_hat_current = compute_R_hat(sub_chains, warmup=n_sub_iters//2)[1]
+        r_hats_halfway.append(r_hat_current)
+
+    return np.array(r_hats_halfway)
+
+
+def compute_R_hat_halfway_light(chains, interval=100, start=1000):
+    n_chains, n_iters, K= chains.shape
+    r_hat_current = compute_R_hat(chains, warmup=n_iters//2)[1]
+    return r_hat_current
+
+
+def compute_R_hat_rank(chains, rhat_window_coeff=0.5, method='rank'):
+    '''
+    computes any kind of r hat using arviz api.
+    :param chains:
+    :param rhat_window_coeff: window size for computing rhat
+    :param method:
+    :return:
+    '''
+    n_chains, n_iters, K = chains.shape
+    warmup = int(rhat_window_coeff* n_iters)
+    if warmup%2 ==1:
+        warmup = warmup +1
+    chains = chains[:, warmup:, :]
+    n_iters = chains.shape[1]
+    n_chains = chains.shape[0]
+    K = chains.shape[2]
+    if n_iters%2 == 1:
+        n_iters = int(n_iters - 1)
+        chains = chains[:,:n_iters-1,:]
+
+    n_iters = n_iters // 2
+    psi = np.reshape(chains, (n_chains * 2, n_iters, K))
+    psi_az = arviz.convert_to_dataset(psi)
+    rhat_xarray = arviz.rhat(psi_az, method=method)
+    #print(rhat_xarray)
+    rhat = rhat_xarray.load().x
+    #print(rhat)
+    return rhat
+
+
+
+def stochastic_iterate_averaging(estimate, start):
+    N = estimate.shape[0]
+    if N - start <= 0:
+        raise "Start of stationary distribution must be lower than number of iterates"
+
+    window_lengths = np.reshape(np.arange(start, N) - start + 1,
+                                [-1, 1])
+    estimate_iters = np.cumsum(estimate[start:,:], axis=0) / window_lengths
+    estimate_mean = estimate_iters[-1]
+    return (estimate_iters, estimate_mean)
 
 
 def monte_carlo_se(iterate_chains, warmup=500):
@@ -155,7 +267,6 @@ def compute_khat_iterates(iterate_chains, warmup=500, param_idx=0, increasing= T
         k_hat_values[i] = k_post
 
     return np.nanmax(k_hat_values)
-
 
 
 
