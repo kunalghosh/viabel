@@ -97,8 +97,6 @@ def plot_approx_and_exact_contours(logdensity, var_family, var_param,
     xlist = np.linspace(*xlim, 500)
     ylist = np.linspace(*ylim, 500)
     X, Y = np.meshgrid(xlist, ylist)
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
     XY = np.concatenate([np.atleast_2d(X.ravel()), np.atleast_2d(Y.ravel())]).T
     if aux_var is not None:
         a1= XY.shape[0]
@@ -111,17 +109,6 @@ def plot_approx_and_exact_contours(logdensity, var_family, var_param,
     plt.contour(X, Y, Zapprox, cmap=cmap2, linestyles='solid')
     if savepath is not None:
         plt.savefig(savepath, bbox_inches='tight')
-
-=======
-=======
->>>>>>> Stashed changes
-    XY = np.concatenate([X[:,:2,np.newaxis], Y[:,:2,np.newaxis]], axis=2)
-    Z = np.exp(logdensity(XY))
-    Zapprox = np.exp(var_family.logdensity(XY, var_param))
-    plt.contour(X, Y, Z, colors='k', linestyles='solid')
-    plt.contour(X, Y, Zapprox, colors='r', linestyles='solid')
->>>>>>> Stashed changes
-    plt.show()
 
 
 def plot_history(history, B=None, ylabel=None):

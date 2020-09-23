@@ -682,12 +682,12 @@ def markov_score_climbing_cis(var_family, logdensity, n_samples, k):
         samples_all = np.concatenate((samples, prev_zk))
         log_weights = logdensity(samples) - var_family.logdensity(samples, var_param)
         weight_zk = logdensity(prev_zk) - var_family.logdensity(prev_zk, var_param)
-        print(weight_zk.shape)
+        #print(weight_zk.shape)
         log_weights_all = np.concatenate((log_weights, weight_zk))
         weights_all = np.exp(log_weights_all)
         weights_snis = weights_all /np.sum(weights_all)
-        print(np.sum(weights_all))
-        print(weights_snis)
+        #print(np.sum(weights_all))
+        #print(weights_snis)
         idx_sample = np.random.choice(n_samples +1, 1, p=weights_snis.flatten())
         weight_sample = samples_all[idx_sample]
         obj_grad = logdensity_q_grad(var_param)
@@ -1055,7 +1055,7 @@ def adagrad_optimize(n_iters, objective_and_grad, init_param,
                         neff_list.append(neff)
 
                 elif has_log_norm == 3:
-                    print(prev_z)
+                    #print(prev_z)
                     obj_val, obj_grad, prev_z = objective_and_grad(variational_param, prev_z)
                     log_norm = 0.
                 else:
