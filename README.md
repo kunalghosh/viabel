@@ -34,6 +34,9 @@ Tamara Broderick.
 In *Proc. of the 23rd International Conference on Artificial Intelligence and
 Statistics* (AISTATS), Palermo, Italy. PMLR: Volume 108, 2020.
 
+This package also contains optimizers with convergence diagnostics and iterate averaging proposed 
+in [Robust, Accurate Stochastic Optimization for Variational Inference](https://arxiv.org/abs/2009.00666)
+
 ## How to install
 
 If you just want to compute bounds, just run `pip install viabel`.
@@ -51,6 +54,11 @@ usage examples of the bounds.
 
 The [robust regression example](notebooks/robust-regression.ipynb) demonstrates
 how to use the variational Bayes functionality and then compute bounds.
+
+The [robust regression with convergence diagnostics](robust-regression-optimizers-all.ipynb) 
+shows the working of different adaptive optimizers with convergence diagnostics and iterate averaging
+on a robust regression task.
+It also shows autocorrelation plots for the first location and first scale parameter in the end.
 
 ## Running Comparison Experiments
 
