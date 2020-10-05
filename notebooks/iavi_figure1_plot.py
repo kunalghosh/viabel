@@ -31,7 +31,7 @@ from matplotlib import rc
 rc('text', usetex = True)
 font = {'family' : 'normal',
         'weight' : 'normal',
-        'size'   : 19.3}
+        'size'   : 19.9}
 rc('font', **font)
 
 import  argparse
@@ -155,9 +155,10 @@ if modelcode == 5:
                 klvi_var_param_rms, klvi_var_param_list_rms, avg_klvi_mean_list_rms, avg_klvi_sigmas_list_rms, klvi_history_rms, _, op_log_mf_rms = \
                     rmsprop_workflow_optimize1(10000, fn_density, obj_and_grad, init_var_param, k, true_mean, true_cov, learning_rate=.018,  learning_rate_end=0.011,
                                                n_optimisers=1, stopping_rule=1, tolerance=0.02, tail_avg_iters=100)
-                with open('lr_70_fig3.pickle', 'wb') as handle:
+                with open('lr_70_fig4.pickle', 'wb') as handle:
                     pickle.dump(op_log_mf_rms, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+            print(op_log_mf_rms.keys())
             klvi_history_rms= op_log_mf_rms['nelbo']
 
             D_moments = op_log_mf_rms['D_moments']
@@ -178,15 +179,10 @@ if modelcode == 5:
             from matplotlib.pyplot import text
             vlines = [op_log_mf_rms['convergence_points'][0],  op_log_mf_rms['final_iter'], op_log_mf_rms['start_stats2']]
 
-            #import pdb
-            #pdb.set_trace()
-            #ax1.legend()
-            #ax0.legend()
             h2, l2 = ax1.get_legend_handles_labels()
             h1, l1 = ax0.get_legend_handles_labels()
 
             ax1.legend(h2+h1, l2+l1, loc='upper center')
-
             ax0.axvline(x=vlines[0], color='purple', linestyle=':',label='1e-2')
             #ax0.axvline(x=vlines[1], color='red', linestyle=':', label='1e-3')
             #ax0.axvline(x=vlines[2], color='red', linestyle='-.', label='1e-4')
